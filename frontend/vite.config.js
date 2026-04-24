@@ -6,7 +6,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     allowedHosts: [
-      "localhost"
+      "localhost",
+      "192.168.1.11",
+      "roblox.backendify.my.id"
     ]
   },
 })
