@@ -77,8 +77,11 @@ func main() {
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {
-		port = "3000"
+		port = "7000"
 	}
 
-	log.Fatal(app.Listen(":" + port))
+	log.Printf("Starting server on port %s", port)
+	if err := app.Listen(":" + port); err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
 }
