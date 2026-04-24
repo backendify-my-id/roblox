@@ -1,0 +1,40 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with Litmus
+*.out
+
+# Go dependency directory
+vendor/
+
+# Frontend dependencies
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Editor / OS specific
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Environment variables (Sangat penting agar .env tidak terekspos ke Git)
+.env
+backend/.env
+frontend/.env
+
+# Docker logs
+*.log
+
+# Project specific
+backend/roblox-friend-tracker
+
+docker-compose.yml
