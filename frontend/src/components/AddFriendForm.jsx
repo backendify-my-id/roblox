@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { fetchWithAuth } from '../utils/api';
 
 const AddFriendForm = ({ onAdd }) => {
   const [username, setUsername] = useState('');
@@ -13,8 +14,7 @@ const AddFriendForm = ({ onAdd }) => {
     setError(null);
     
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/friends`, {
+      const response = await fetchWithAuth(`/api/friends`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

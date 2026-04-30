@@ -75,10 +75,10 @@ func ConnectDB() {
 	log.Println("Database connection established")
 
 	err = DB.AutoMigrate(
-		&models.TrackedFriend{}, // Keep V1 legacy table
 		&models.User{},
 		&models.Friend{},
 		&models.ActivityLog{},
+		&models.ProfileChangeLog{},
 	)
 	if err != nil {
 		log.Fatal("Failed to auto migrate database schemas: ", err)

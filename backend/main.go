@@ -9,6 +9,7 @@ import (
 	"github.com/apany/roblox-friend-tracker/cron"
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/handlers"
+	"github.com/apany/roblox-friend-tracker/middleware"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
@@ -22,10 +23,7 @@ func main() {
 
 	database.ConnectDB()
 	cache.ConnectRedis()
-	// Disable MVP V1 cron
-	// cron.StartPresenceSync()
-	cron.StartPresenceSyncV2()  // Every 5 min: log status changes to activity_logs
-	cron.StartFriendsSyncCron() // Every 1 hour: sync friend list for all tracked users
+	cron.StartJobs()
 
 	// TRUST_PROXY configuration as per PRD
 	trustProxy := os.Getenv("TRUST_PROXY") == "true"
@@ -45,7 +43,7 @@ func main() {
 	// CORS configuration: Allow local IP and specific domains
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: corsOrigins,
-		AllowHeaders: "Origin, Content-Type, Accept",
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 	}))
 
 	// Rate Limiting (Prevent spamming refresh)
@@ -64,16 +62,18 @@ func main() {
 
 	api := app.Group("/api")
 
-	api.Get("/friends", handlers.GetFriends)
-	api.Post("/friends", handlers.AddFriend)
-	api.Delete("/friends/:id", handlers.DeleteFriend)
+	// Public Routes
+	api.Post("/auth/register", handlers.Register)
+	api.Post("/auth/login", handlers.Login)
 
-	// V2 Routes
-	api.Get("/v2/targets", handlers.GetAllTargets)                  // List all tracked targets
-	api.Post("/v2/targets", handlers.AddOrSyncTarget)               // Add or re-sync a target
-	api.Get("/v2/targets/:id/friends", handlers.GetTargetFriends)   // Get friends of a target
-	api.Delete("/v2/targets/:id", handlers.DeleteTarget)            // Remove a target
-	api.Get("/v2/friends/:friendId/logs", handlers.GetActivityLogs) // Get activity logs
+	// Protected Routes
+	api.Use(middleware.Protected())
+
+	// V3 Routes
+	api.Get("/friends", handlers.GetFriends)
+	api.Post("/friends/sync", handlers.ManualSync)
+	api.Get("/friends/:friendId/logs", handlers.GetActivityLogs)
+	api.Get("/friends/:friendId/profile-changes", handlers.GetProfileChangeLogs)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {

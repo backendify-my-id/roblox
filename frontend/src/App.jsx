@@ -1,53 +1,54 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import TargetCard from './components/TargetCard';
-import TargetSearchForm from './components/TargetSearchForm';
+import { fetchWithAuth } from './utils/api';
+import Auth from './components/Auth';
 import FriendCard from './components/FriendCard';
 import ActivityModal from './components/ActivityModal';
+import ProfileChangeModal from './components/ProfileChangeModal';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-
-// ─── Page: Target Dashboard ─────────────────────────────────────────────────
-function TargetDashboard({ onSelectTarget }) {
-  const [targets, setTargets] = useState([]);
+// ─── Main Dashboard ──────────────────────────────────────────────────────────
+function Dashboard({ user }) {
+  const [friends, setFriends] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState(null);
-  const [syncMsg, setSyncMsg] = useState(null);
+  const [presenceFilter, setPresenceFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
-  const fetchTargets = useCallback(async () => {
+  const [selectedFriendLog, setSelectedFriendLog] = useState(null);
+  const [selectedProfileLog, setSelectedProfileLog] = useState(null);
+
+  const fetchFriends = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/v2/targets`);
-      if (!res.ok) throw new Error('Failed to load targets');
+      const params = new URLSearchParams();
+      if (presenceFilter) params.set('presence', presenceFilter);
+      if (statusFilter) params.set('status', statusFilter);
+      const qs = params.toString();
+      const res = await fetchWithAuth(`/api/friends${qs ? '?' + qs : ''}`);
+      if (!res.ok) throw new Error('Gagal memuat daftar teman');
       const data = await res.json();
-      setTargets(Array.isArray(data) ? data : []);
+      setFriends(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err.message);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [presenceFilter, statusFilter]);
 
   useEffect(() => {
-    fetchTargets();
-  }, [fetchTargets]);
+    fetchFriends();
+  }, [fetchFriends]);
 
-  const handleAddTarget = async (username) => {
+  const handleManualSync = async () => {
     setIsSyncing(true);
-    setSyncMsg(null);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/v2/targets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Sync failed');
-      setSyncMsg(data.synced
-        ? `✅ Berhasil sync ${data.target_user.roblox_username} — ${data.friend_count} teman`
-        : `ℹ️ ${data.message}`
-      );
-      await fetchTargets();
+      const res = await fetchWithAuth('/api/friends/sync', { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Gagal sinkronisasi');
+      }
+      await fetchFriends();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -55,135 +56,111 @@ function TargetDashboard({ onSelectTarget }) {
     }
   };
 
-  const handleDeleteTarget = async (id) => {
-    try {
-      const res = await fetch(`${API_URL}/api/v2/targets/${id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) throw new Error('Gagal menghapus target');
-      setSyncMsg('🗑️ Target berhasil dihapus');
-      await fetchTargets();
-    } catch (err) {
-      setError(err.message);
-    }
-  };
+
 
   return (
     <div className="app-container">
-      <div className="header">
-        <h1>Roblox Analytics Dashboard</h1>
-        <p>Lacak aktivitas teman dari akun target Roblox secara otomatis.</p>
-      </div>
-
-      <div className="add-friend-container">
-        <h2 style={{ fontSize: '1.1rem', marginBottom: '0.75rem' }}>Track Target Baru</h2>
-        <TargetSearchForm onSearch={handleAddTarget} isLoading={isSyncing} />
-        {syncMsg && <div style={{ color: '#22c55e', fontSize: '0.9rem' }}>{syncMsg}</div>}
-        {error && <div style={{ color: '#ef4444', fontSize: '0.9rem' }}>Error: {error}</div>}
-      </div>
-
-      {isLoading ? (
-        <div className="loading">Memuat daftar target...</div>
-      ) : targets.length === 0 ? (
-        <div className="loading">Belum ada target yang dilacak. Tambahkan username Roblox di atas!</div>
-      ) : (
-        <>
-          <div style={{ marginBottom: '1rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            {targets.length} target terlacak — klik untuk lihat daftar teman
-          </div>
-          <div className="friends-grid">
-            {targets.map((t) => (
-              <TargetCard 
-                key={t.id} 
-                target={t} 
-                onClick={onSelectTarget} 
-                onDelete={handleDeleteTarget}
-              />
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ─── Page: Friends of a Target ───────────────────────────────────────────────
-function FriendsList({ target, onBack }) {
-  const [friends, setFriends] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [selectedFriend, setSelectedFriend] = useState(null);
-
-  useEffect(() => {
-    const fetchFriends = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(`${API_URL}/api/v2/targets/${target.id}/friends`);
-        if (!res.ok) throw new Error('Failed to fetch friends');
-        const data = await res.json();
-        setFriends(Array.isArray(data.friends) ? data.friends : []);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchFriends();
-  }, [target.id]);
-
-  return (
-    <div className="app-container">
-      {/* Back button + Target info header */}
-      <div style={{ marginBottom: '2rem' }}>
-        <button
-          onClick={onBack}
-          style={{
-            background: 'none', border: '1px solid #334155', color: 'var(--text-muted)',
-            padding: '0.4rem 1rem', borderRadius: '0.5rem', cursor: 'pointer',
-            marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem',
-            transition: 'color 0.2s, border-color 0.2s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#60a5fa'; }}
-          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = '#334155'; }}
-        >
-          ← Kembali ke Dashboard
-        </button>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {target.avatar_url && (
-            <img src={target.avatar_url} alt="Avatar" style={{ width: 64, height: 64, borderRadius: '50%', border: '3px solid #3b82f6' }} />
+      <div className="header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
+        <div>
+          <h1 style={{ background: 'linear-gradient(to right, #60a5fa, #a78bfa)', WebkitBackgroundClip: 'text', color: 'transparent', fontSize: '2.5rem', margin: 0 }}>
+            Roblox Friends Tracker
+          </h1>
+          <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+            Pantau aktivitas teman Roblox Anda secara otomatis.
+          </p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--bg-card)', padding: '0.75rem 1.5rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
+          {user.avatar ? (
+            <img src={user.avatar} alt="Avatar" style={{ width: 48, height: 48, borderRadius: '50%', border: '2px solid #3b82f6' }} />
+          ) : (
+            <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</div>
           )}
           <div>
-            <h1 style={{ fontSize: '2rem', fontWeight: 700, background: 'linear-gradient(to right, #60a5fa, #a78bfa)', WebkitBackgroundClip: 'text', color: 'transparent' }}>
-              {target.roblox_display_name || target.roblox_username}
-            </h1>
-            {target.roblox_display_name && target.roblox_display_name !== target.roblox_username && (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>@{target.roblox_username}</div>
-            )}
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-              {friends.length} teman • Klik kartu untuk lihat riwayat aktivitas
-            </div>
+            <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#fff' }}>{user.displayName}</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>@{user.username}</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>ID: {user.roblox_id}</div>
+            <button
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              style={{ background: isSyncing ? '#334155' : '#3b82f6', color: '#fff', border: 'none', padding: '0.3rem 0.8rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: isSyncing ? 'not-allowed' : 'pointer', marginTop: '0.3rem' }}
+            >
+              {isSyncing ? 'Menyinkronkan...' : '🔄 Sync Sekarang'}
+            </button>
           </div>
         </div>
       </div>
 
-      {error ? (
-        <div className="loading" style={{ color: '#ef4444' }}>Error: {error}</div>
-      ) : isLoading ? (
-        <div className="loading">Memuat daftar teman & status live...</div>
-      ) : friends.length === 0 ? (
-        <div className="loading">Tidak ada teman yang ditemukan untuk target ini.</div>
+      {error && <div style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1.5rem', border: '1px solid rgba(239,68,68,0.2)' }}>{error}</div>}
+
+      {isLoading ? (
+        <div className="loading">Memuat daftar teman...</div>
       ) : (
-        <div className="friends-grid">
-          {friends.map((f) => (
-            <FriendCard key={f.id} friend={f} onClickLog={setSelectedFriend} />
-          ))}
-        </div>
+        <>
+          <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              {[{ label: 'Semua', value: '' }, { label: '🟢 Online', value: 'Online' }, { label: '🎮 In-Game', value: 'In-Game' }, { label: '🔧 In-Studio', value: 'In-Studio' }, { label: '⚫ Offline', value: 'Offline' }].map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setPresenceFilter(opt.value)}
+                  style={{
+                    padding: '0.4rem 0.9rem', borderRadius: '2rem', fontSize: '0.85rem', cursor: 'pointer',
+                    border: presenceFilter === opt.value ? '1px solid #3b82f6' : '1px solid var(--border)',
+                    background: presenceFilter === opt.value ? 'rgba(59,130,246,0.15)' : 'var(--bg-card)',
+                    color: presenceFilter === opt.value ? '#60a5fa' : 'var(--text-muted)',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+              <span style={{ borderLeft: '1px solid var(--border)', margin: '0 0.25rem' }} />
+              {[{ label: 'Aktif', value: '' }, { label: '❌ Dihapus', value: 'removed' }].map(opt => (
+                <button
+                  key={opt.value + '_status'}
+                  onClick={() => setStatusFilter(opt.value)}
+                  style={{
+                    padding: '0.4rem 0.9rem', borderRadius: '2rem', fontSize: '0.85rem', cursor: 'pointer',
+                    border: statusFilter === opt.value ? '1px solid #a78bfa' : '1px solid var(--border)',
+                    background: statusFilter === opt.value ? 'rgba(167,139,250,0.15)' : 'var(--bg-card)',
+                    color: statusFilter === opt.value ? '#a78bfa' : 'var(--text-muted)',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+              {friends.length} teman ditemukan
+            </div>
+          </div>
+
+          {friends.length === 0 ? (
+            <div className="loading">
+              {(presenceFilter || statusFilter)
+                ? 'Tidak ada teman yang cocok dengan filter ini.'
+                : 'Belum ada teman yang terlacak. Klik "Sync Sekarang" untuk memuat dari Roblox.'}
+            </div>
+          ) : (
+            <div className="friends-grid">
+              {friends.map(f => (
+                <FriendCard
+                  key={f.id}
+                  friend={f}
+                  onClickLog={setSelectedFriendLog}
+                  onClickProfileLog={setSelectedProfileLog}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {selectedFriend && (
-        <ActivityModal friend={selectedFriend} onClose={() => setSelectedFriend(null)} />
+      {selectedFriendLog && (
+        <ActivityModal friend={selectedFriendLog} onClose={() => setSelectedFriendLog(null)} />
+      )}
+      {selectedProfileLog && (
+        <ProfileChangeModal friend={selectedProfileLog} onClose={() => setSelectedProfileLog(null)} />
       )}
     </div>
   );
@@ -191,12 +168,37 @@ function FriendsList({ target, onBack }) {
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 function App() {
-  const [selectedTarget, setSelectedTarget] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
+  });
 
-  if (selectedTarget) {
-    return <FriendsList target={selectedTarget} onBack={() => setSelectedTarget(null)} />;
+  const handleLogin = (newToken, newUser) => {
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('user', JSON.stringify(newUser));
+    setToken(newToken);
+    setUser(newUser);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setToken(null);
+    setUser(null);
+  };
+
+  if (!token || !user) {
+    return <Auth onLogin={handleLogin} />;
   }
-  return <TargetDashboard onSelectTarget={setSelectedTarget} />;
+
+  return (
+    <>
+      <div style={{ position: 'absolute', top: '1rem', right: '1rem', zIndex: 100 }}>
+        <button onClick={handleLogout} style={{ padding: '0.4rem 1rem', borderRadius: '0.5rem', background: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer' }}>Logout</button>
+      </div>
+      <Dashboard user={user} />
+    </>
+  );
 }
 
 export default App;

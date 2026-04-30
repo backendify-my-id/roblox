@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { fetchWithAuth } from '../utils/api';
 
 const ActivityModal = ({ friend, onClose }) => {
   const [logs, setLogs] = useState([]);
@@ -8,8 +9,7 @@ const ActivityModal = ({ friend, onClose }) => {
   useEffect(() => {
     const fetchLogs = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-        const response = await fetch(`${apiUrl}/api/v2/friends/${friend.id}/logs`);
+        const response = await fetchWithAuth(`/api/friends/${friend.id}/logs`);
         if (!response.ok) throw new Error('Failed to fetch logs');
         const data = await response.json();
         setLogs(Array.isArray(data) ? data : []);
