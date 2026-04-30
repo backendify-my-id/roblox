@@ -65,6 +65,7 @@ func main() {
 	// Public Routes
 	api.Post("/auth/register", handlers.Register)
 	api.Post("/auth/login", handlers.Login)
+	api.Post("/auth/logout", middleware.Protected(), handlers.Logout)
 
 	// Protected Routes
 	api.Use(middleware.Protected())

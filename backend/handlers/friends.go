@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"time"
 
+	"github.com/apany/roblox-friend-tracker/cache"
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
 	"github.com/apany/roblox-friend-tracker/services"
@@ -78,10 +80,22 @@ func ManualSync(c *fiber.Ctx) error {
 
 	log.Printf("[ManualSync] Syncing friends for user %s (roblox_id=%s)", user.RobloxUsername, user.RobloxUserID)
 
+	// Redis Rate Limiting: 1 sync per 2 minutes per user
+	lockKey := fmt.Sprintf("lock:manual_sync:%d", userId)
+	isLocked, _ := cache.RDB.Get(cache.Ctx, lockKey).Result()
+	if isLocked != "" {
+		return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+			"error": "Tunggu sebentar, Anda baru saja melakukan sinkronisasi. Coba lagi dalam 2 menit.",
+		})
+	}
+
 	if err := services.SyncUserFriends(user.ID, user.RobloxUserID); err != nil {
 		log.Printf("[ManualSync] Sync error for user %s: %v", user.RobloxUsername, err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to sync friends: " + err.Error()})
 	}
+
+	// Set lock for 2 minutes
+	cache.RDB.Set(cache.Ctx, lockKey, "locked", 2*time.Minute)
 
 	return c.JSON(fiber.Map{"message": "Sync successful"})
 }

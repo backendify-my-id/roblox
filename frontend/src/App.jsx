@@ -180,7 +180,12 @@ function App() {
     setUser(newUser);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetchWithAuth('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Failed to blacklist token on server:', err);
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setToken(null);

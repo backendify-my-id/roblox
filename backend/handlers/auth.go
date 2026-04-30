@@ -5,12 +5,14 @@ import (
 	"os"
 	"time"
 
+	"github.com/apany/roblox-friend-tracker/cache"
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
 	"github.com/apany/roblox-friend-tracker/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+	"strings"
 )
 
 type AuthRequest struct {
@@ -114,4 +116,32 @@ func Login(c *fiber.Ctx) error {
 			"avatar":      user.AvatarURL,
 		},
 	})
+}
+
+func Logout(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	if authHeader == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "No token provided"})
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+	// Extract expiry from token to know how long to keep it in blacklist
+	token, _ := jwt.Parse(tokenString, nil) // Parsing without validation to get claims
+	if token != nil {
+		if claims, ok := token.Claims.(jwt.MapClaims); ok {
+			if exp, ok := claims["exp"].(float64); ok {
+				expiry := time.Unix(int64(exp), 0)
+				ttl := time.Until(expiry)
+				if ttl > 0 {
+					cache.RDB.Set(cache.Ctx, "blacklist:"+tokenString, "true", ttl)
+				}
+			}
+		}
+	} else {
+		// Fallback if token can't be parsed
+		cache.RDB.Set(cache.Ctx, "blacklist:"+tokenString, "true", 24*time.Hour)
+	}
+
+	return c.JSON(fiber.Map{"message": "Logged out successfully"})
 }

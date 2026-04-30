@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/apany/roblox-friend-tracker/cache"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -21,6 +22,12 @@ func Protected() fiber.Handler {
 		}
 
 		tokenString := parts[1]
+
+		// Check Redis blacklist
+		blacklisted, _ := cache.RDB.Get(cache.Ctx, "blacklist:"+tokenString).Result()
+		if blacklisted != "" {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Token has been invalidated (Logged out)"})
+		}
 		secret := os.Getenv("APP_SECRET")
 		if secret == "" {
 			secret = "86fb2b8d54096f17b9085173f4dd212e3e83dfd22c6656c406d9b876c85e8cf7"

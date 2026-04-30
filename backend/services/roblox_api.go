@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/apany/roblox-friend-tracker/cache"
 )
 
 // --- Types ---
@@ -94,14 +97,32 @@ func GetUserDetails(userIds []uint64) (map[uint64]UserDetailData, error) {
 		return result, nil
 	}
 
+	var missingIds []uint64
+	for _, id := range userIds {
+		key := fmt.Sprintf("user_detail:%d", id)
+		val, err := cache.RDB.Get(cache.Ctx, key).Result()
+		if err == nil {
+			var data UserDetailData
+			if err := json.Unmarshal([]byte(val), &data); err == nil {
+				result[id] = data
+				continue
+			}
+		}
+		missingIds = append(missingIds, id)
+	}
+
+	if len(missingIds) == 0 {
+		return result, nil
+	}
+
 	// Batch max 100 per request
 	batchSize := 100
-	for i := 0; i < len(userIds); i += batchSize {
+	for i := 0; i < len(missingIds); i += batchSize {
 		end := i + batchSize
-		if end > len(userIds) {
-			end = len(userIds)
+		if end > len(missingIds) {
+			end = len(missingIds)
 		}
-		batch := userIds[i:end]
+		batch := missingIds[i:end]
 
 		payload := map[string]interface{}{
 			"userIds":            batch,
@@ -132,6 +153,9 @@ func GetUserDetails(userIds []uint64) (map[uint64]UserDetailData, error) {
 
 		for _, u := range res.Data {
 			result[u.Id] = u
+			// Cache for 24 hours
+			uJson, _ := json.Marshal(u)
+			cache.RDB.Set(cache.Ctx, fmt.Sprintf("user_detail:%d", u.Id), string(uJson), 24*time.Hour)
 		}
 	}
 
@@ -180,13 +204,29 @@ func GetFriends(userId uint64) ([]FriendData, error) {
 }
 
 func GetAvatars(userIds []uint64) (map[uint64]string, error) {
+	result := make(map[uint64]string)
 	if len(userIds) == 0 {
-		return make(map[uint64]string), nil
+		return result, nil
+	}
+
+	var missingIds []uint64
+	for _, id := range userIds {
+		key := fmt.Sprintf("avatar:%d", id)
+		val, err := cache.RDB.Get(cache.Ctx, key).Result()
+		if err == nil && val != "" {
+			result[id] = val
+			continue
+		}
+		missingIds = append(missingIds, id)
+	}
+
+	if len(missingIds) == 0 {
+		return result, nil
 	}
 
 	// Batch request max 100
-	idStrs := make([]string, len(userIds))
-	for i, id := range userIds {
+	idStrs := make([]string, len(missingIds))
+	for i, id := range missingIds {
 		idStrs[i] = fmt.Sprintf("%d", id)
 	}
 
@@ -208,12 +248,13 @@ func GetAvatars(userIds []uint64) (map[uint64]string, error) {
 		return nil, err
 	}
 
-	avatarMap := make(map[uint64]string)
 	for _, d := range res.Data {
-		avatarMap[d.TargetId] = d.ImageUrl
+		result[d.TargetId] = d.ImageUrl
+		// Cache for 6 hours
+		cache.RDB.Set(cache.Ctx, fmt.Sprintf("avatar:%d", d.TargetId), d.ImageUrl, 6*time.Hour)
 	}
 
-	return avatarMap, nil
+	return result, nil
 }
 
 func GetPresences(userIds []uint64) (map[uint64]PresenceData, error) {
