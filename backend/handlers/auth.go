@@ -56,6 +56,10 @@ func Register(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to hash password"})
 	}
 
+	// Get default user role
+	var role models.Role
+	database.DB.Where("name = ?", "user").First(&role)
+
 	user := models.User{
 		RobloxUserID:      fmt.Sprintf("%d", robloxId),
 		RobloxUsername:    correctUsername,
@@ -63,6 +67,7 @@ func Register(c *fiber.Ctx) error {
 		PasswordHash:      string(hashedPassword),
 		AvatarURL:         avatarUrl,
 		CreatedAt:         time.Now(),
+		RoleID:            role.ID,
 	}
 
 	if err := database.DB.Create(&user).Error; err != nil {
@@ -79,7 +84,7 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	var user models.User
-	if err := database.DB.Where("LOWER(roblox_username) = LOWER(?)", req.Username).First(&user).Error; err != nil {
+	if err := database.DB.Preload("Role").Where("LOWER(roblox_username) = LOWER(?)", req.Username).First(&user).Error; err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
@@ -97,6 +102,7 @@ func Login(c *fiber.Ctx) error {
 		"user_id":   user.ID,
 		"username":  user.RobloxUsername,
 		"roblox_id": user.RobloxUserID,
+		"role":      user.Role.Name,
 		"exp":       time.Now().Add(time.Hour * 72).Unix(),
 	}
 
@@ -114,6 +120,7 @@ func Login(c *fiber.Ctx) error {
 			"displayName": user.RobloxDisplayName,
 			"roblox_id":   user.RobloxUserID,
 			"avatar":      user.AvatarURL,
+			"role":        user.Role.Name,
 		},
 	})
 }

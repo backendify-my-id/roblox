@@ -45,6 +45,8 @@ func Protected() fiber.Handler {
 		if ok {
 			c.Locals("user_id", claims["user_id"])
 			c.Locals("username", claims["username"])
+			c.Locals("roblox_id", claims["roblox_id"])
+			c.Locals("role", claims["role"])
 		}
 
 		return c.Next()

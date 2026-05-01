@@ -1,10 +1,13 @@
 package cron
 
 import (
+	"fmt"
 	"log"
 	"strconv"
 	"sync"
+	"time"
 
+	"github.com/apany/roblox-friend-tracker/cache"
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
 	"github.com/apany/roblox-friend-tracker/services"
@@ -45,8 +48,19 @@ func syncAllFriends() {
 	}
 
 	for _, user := range users {
-		if err := services.SyncUserFriends(user.ID, user.RobloxUserID); err != nil {
+		checkKey := fmt.Sprintf("last_name_check:%d", user.ID)
+		checkNames := false
+		
+		_, err := cache.RDB.Get(cache.Ctx, checkKey).Result()
+		if err != nil { // key doesn't exist or expired
+			checkNames = true
+		}
+		
+		if err := services.SyncUserFriends(user.ID, user.RobloxUserID, checkNames); err != nil {
 			log.Printf("Error syncing friends for user %s: %v\n", user.RobloxUsername, err)
+		} else if checkNames {
+			// Update the check time on success with a 1-hour TTL
+			cache.RDB.Set(cache.Ctx, checkKey, "done", 1*time.Hour)
 		}
 	}
 	log.Println("15-minute friends & profile sync completed")
@@ -68,6 +82,17 @@ func syncAllPresences() {
 
 	if len(friends) == 0 {
 		return
+	}
+
+	// Get all stealth users to exclude them from online display
+	var stealthRobloxIDs []string
+	database.DB.Model(&models.User{}).Where("is_stealth = ?", true).Pluck("roblox_user_id", &stealthRobloxIDs)
+	stealthMap := make(map[string]bool)
+	for _, id := range stealthRobloxIDs {
+		stealthMap[id] = true
+	}
+	if len(stealthRobloxIDs) > 0 {
+		log.Printf("[Stealth] Active stealth IDs: %v\n", stealthRobloxIDs)
 	}
 
 	// Deduplicate roblox IDs to minimize API calls
@@ -125,6 +150,12 @@ func syncAllPresences() {
 				statusStr = "Invisible"
 			}
 
+			// Force Offline if user is in Stealth Mode
+			if stealthMap[f.FriendRobloxID] {
+				statusStr = "Offline"
+				p.LastLocation = ""
+			}
+
 			if f.CurrentPresence != statusStr || f.CurrentGameName != p.LastLocation {
 				// Status changed, log it
 				f.CurrentPresence = statusStr
@@ -137,6 +168,7 @@ func syncAllPresences() {
 					GameName: p.LastLocation,
 				}
 				database.DB.Create(&newLog)
+				log.Printf("[Activity] %s is now %s (%s)\n", f.FriendUsername, statusStr, p.LastLocation)
 			}
 		}
 	}

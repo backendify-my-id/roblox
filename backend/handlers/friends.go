@@ -31,6 +31,12 @@ func GetFriends(c *fiber.Ctx) error {
 		query = query.Where("current_presence = ?", presenceFilter)
 	}
 
+	// Search by username or display name: ?search=keyword
+	if searchFilter := c.Query("search"); searchFilter != "" {
+		searchTerm := "%" + searchFilter + "%"
+		query = query.Where("friend_username ILIKE ? OR friend_display_name ILIKE ?", searchTerm, searchTerm)
+	}
+
 	if err := query.Order(`
 		CASE status WHEN 'active' THEN 0 ELSE 1 END,
 		CASE current_presence
@@ -89,7 +95,7 @@ func ManualSync(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := services.SyncUserFriends(user.ID, user.RobloxUserID); err != nil {
+	if err := services.SyncUserFriends(user.ID, user.RobloxUserID, true); err != nil {
 		log.Printf("[ManualSync] Sync error for user %s: %v", user.RobloxUsername, err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to sync friends: " + err.Error()})
 	}

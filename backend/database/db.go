@@ -8,6 +8,7 @@ import (
 	"github.com/apany/roblox-friend-tracker/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
@@ -38,7 +39,9 @@ func ConnectDB() {
 	defaultDsn := fmt.Sprintf("host=%s user=%s password=%s dbname=postgres port=%s sslmode=disable TimeZone=UTC",
 		host, user, password, port)
 
-	defaultDB, err := gorm.Open(postgres.Open(defaultDsn), &gorm.Config{})
+	defaultDB, err := gorm.Open(postgres.Open(defaultDsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Error),
+	})
 	if err == nil {
 		var count int64
 		defaultDB.Raw("SELECT count(*) FROM pg_database WHERE datname = ?", dbname).Scan(&count)
@@ -58,7 +61,9 @@ func ConnectDB() {
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=UTC",
 		host, user, password, dbname, port)
 
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Error),
+	})
 	if err != nil {
 		log.Fatal("Failed to connect to PostgreSQL database: ", err)
 	}
@@ -75,6 +80,7 @@ func ConnectDB() {
 	log.Println("Database connection established")
 
 	err = DB.AutoMigrate(
+		&models.Role{},
 		&models.User{},
 		&models.Friend{},
 		&models.ActivityLog{},
@@ -84,4 +90,17 @@ func ConnectDB() {
 		log.Fatal("Failed to auto migrate database schemas: ", err)
 	}
 	log.Println("Database schemas auto migrated")
+
+	seedRoles(DB)
+}
+
+func seedRoles(db *gorm.DB) {
+	roles := []string{"admin", "user"}
+	for _, roleName := range roles {
+		var role models.Role
+		if err := db.Where("name = ?", roleName).First(&role).Error; err != nil {
+			db.Create(&models.Role{Name: roleName})
+			log.Printf("Seeded role: %s", roleName)
+		}
+	}
 }

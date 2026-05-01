@@ -10,4 +10,7 @@ type User struct {
 	PasswordHash      string    `gorm:"not null" json:"-"`
 	AvatarURL         string    `gorm:"type:text" json:"avatar_url"`
 	CreatedAt         time.Time `json:"created_at"`
+	RoleID            uint      `json:"role_id"`
+	Role              Role      `gorm:"foreignKey:RoleID" json:"role"`
+	IsStealth         bool      `gorm:"default:false" json:"is_stealth"`
 }

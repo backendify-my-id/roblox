@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { fetchWithAuth } from '../utils/api';
 
-const Auth = ({ onLogin }) => {
+const Auth = ({ onLogin, showToast }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -35,7 +35,7 @@ const Auth = ({ onLogin }) => {
       } else {
         setIsLogin(true);
         setError('');
-        alert('Registrasi berhasil! Silakan login.');
+        showToast('Registrasi berhasil! Silakan login.');
       }
     } catch (err) {
       setError(err.message);

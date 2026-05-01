@@ -75,6 +75,7 @@ func main() {
 	api.Post("/friends/sync", handlers.ManualSync)
 	api.Get("/friends/:friendId/logs", handlers.GetActivityLogs)
 	api.Get("/friends/:friendId/profile-changes", handlers.GetProfileChangeLogs)
+	api.Put("/user/settings", handlers.UpdateStealthMode)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {

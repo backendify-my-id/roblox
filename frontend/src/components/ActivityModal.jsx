@@ -52,11 +52,13 @@ const ActivityModal = ({ friend, onClose }) => {
             <tbody>
               {logs.map((log) => (
                 <tr key={log.id}>
-                  <td>{new Date(log.created_at).toLocaleString()}</td>
+                  <td>{new Date(log.created_at).toLocaleString('en-GB')}</td>
                   <td>
                     <span style={{ 
                       color: log.status === 'In-Game' ? '#a78bfa' : 
-                             log.status === 'Online' ? 'var(--status-online)' : 'var(--text-muted)' 
+                             log.status === 'Online' ? 'var(--status-online)' : 
+                             log.status === 'Removed' ? '#ef4444' : 
+                             (log.status === 'First Added' || log.status === 'Added Again') ? '#60a5fa' : 'var(--text-muted)' 
                     }}>
                       {log.status}
                     </span>
