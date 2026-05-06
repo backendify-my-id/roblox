@@ -24,6 +24,9 @@ type User struct {
 	Role              Role      `gorm:"foreignKey:RoleID" json:"role"`
 	IsStealth         bool      `gorm:"default:false" json:"is_stealth"`
 
+	// Pengguna yang dikecualikan dari Mode Siluman (bisa melihat status asli kita)
+	StealthExempts    []*User   `gorm:"many2many:stealth_exemptions;joinForeignKey:UserID;joinReferences:ExemptID" json:"stealth_exempts,omitempty"`
+
 	// Relasi untuk menarik daftar teman dari User ini
 	Friends           []Friend  `gorm:"foreignKey:UserID" json:"friends,omitempty"`
 }

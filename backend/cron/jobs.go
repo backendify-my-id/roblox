@@ -85,15 +85,22 @@ func syncAllPresences() {
 		return
 	}
 
-	// Get all stealth users to exclude them from online display
-	var stealthRobloxIDs []string
-	database.DB.Model(&models.User{}).Where("is_stealth = ?", true).Pluck("roblox_user_id", &stealthRobloxIDs)
-	stealthMap := make(map[string]bool)
-	for _, id := range stealthRobloxIDs {
-		stealthMap[id] = true
+	// Get all stealth users and their exemptions
+	var stealthUsers []models.User
+	database.DB.Preload("StealthExempts").Where("is_stealth = ?", true).Find(&stealthUsers)
+	
+	// stealthMap[AdminRobloxID][ViewerUserID] = true (means viewer CAN bypass)
+	stealthMap := make(map[string]map[uint]bool)
+	for _, su := range stealthUsers {
+		exempts := make(map[uint]bool)
+		for _, eu := range su.StealthExempts {
+			exempts[eu.ID] = true
+		}
+		stealthMap[su.RobloxUserID] = exempts
 	}
-	if len(stealthRobloxIDs) > 0 {
-		log.Printf("[Stealth] Active stealth IDs: %v\n", stealthRobloxIDs)
+
+	if len(stealthMap) > 0 {
+		log.Printf("[Stealth] Active stealth users: %d\n", len(stealthMap))
 	}
 
 	// Deduplicate roblox IDs to minimize API calls
@@ -158,8 +165,9 @@ func syncAllPresences() {
 				statusStr = "Invisible"
 			}
 
-			// Force Offline if user is in Stealth Mode
-			if stealthMap[f.TargetUser.RobloxUserID] {
+			// Force Offline if user is in Stealth Mode and viewer is NOT exempted
+			exemptions, isStealth := stealthMap[f.TargetUser.RobloxUserID]
+			if isStealth && !exemptions[f.UserID] {
 				statusStr = "Offline"
 				p.LastLocation = "-"
 			}

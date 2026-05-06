@@ -13,25 +13,39 @@ func GetUserSettings(c *fiber.Ctx) error {
 	}
 
 	var user models.User
-	if err := database.DB.First(&user, userId).Error; err != nil {
+	if err := database.DB.Preload("StealthExempts").First(&user, userId).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	// Buat daftar user yang dikecualikan
+	type ExemptUser struct {
+		ID       uint   `json:"id"`
+		Username string `json:"username"`
+		Avatar   string `json:"avatar_url"`
+	}
+	var exempts []ExemptUser
+	for _, eu := range user.StealthExempts {
+		exempts = append(exempts, ExemptUser{
+			ID:       eu.ID,
+			Username: eu.RobloxUsername,
+			Avatar:   eu.AvatarURL,
+		})
 	}
 
 	return c.JSON(fiber.Map{
 		"is_stealth": user.IsStealth,
+		"exempts":    exempts,
 		"role":       c.Locals("role"),
 	})
 }
 
 func UpdateStealthMode(c *fiber.Ctx) error {
-	// Get user info from context
 	role := c.Locals("role").(string)
 	userID, err := getUserID(c)
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
 	}
 	
-	// Check if admin
 	if role != "admin" {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Hanya Admin yang dapat menggunakan fitur ini"})
 	}
@@ -49,4 +63,68 @@ func UpdateStealthMode(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "Mode Siluman diperbarui", "is_stealth": req.IsStealth})
+}
+
+func AddStealthExemption(c *fiber.Ctx) error {
+	role := c.Locals("role").(string)
+	userID, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+	
+	if role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Hanya Admin yang dapat menggunakan fitur ini"})
+	}
+
+	type Request struct {
+		Username string `json:"username"`
+	}
+	req := new(Request)
+	if err := c.BodyParser(req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	// Cari user target
+	var targetUser models.User
+	if err := database.DB.Where("roblox_username ILIKE ?", req.Username).First(&targetUser).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Pengguna tidak ditemukan di database"})
+	}
+
+	// Tambahkan ke relasi
+	var admin models.User
+	database.DB.First(&admin, userID)
+	
+	if err := database.DB.Model(&admin).Association("StealthExempts").Append(&targetUser); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal menambahkan pengecualian"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Berhasil ditambahkan", "exempt": fiber.Map{
+		"id": targetUser.ID,
+		"username": targetUser.RobloxUsername,
+		"avatar_url": targetUser.AvatarURL,
+	}})
+}
+
+func RemoveStealthExemption(c *fiber.Ctx) error {
+	role := c.Locals("role").(string)
+	userID, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+	
+	if role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Hanya Admin yang dapat menggunakan fitur ini"})
+	}
+
+	targetID := c.Params("id")
+	
+	var admin models.User
+	database.DB.First(&admin, userID)
+	
+	var targetUser models.User
+	if err := database.DB.First(&targetUser, targetID).Error; err == nil {
+		database.DB.Model(&admin).Association("StealthExempts").Delete(&targetUser)
+	}
+
+	return c.JSON(fiber.Map{"message": "Berhasil dihapus"})
 }

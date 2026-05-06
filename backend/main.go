@@ -77,6 +77,8 @@ func main() {
 	api.Get("/friends/:friendId/profile-changes", handlers.GetProfileChangeLogs)
 	api.Get("/user/settings", handlers.GetUserSettings)
 	api.Put("/user/settings", handlers.UpdateStealthMode)
+	api.Post("/user/stealth-exemptions", handlers.AddStealthExemption)
+	api.Delete("/user/stealth-exemptions/:id", handlers.RemoveStealthExemption)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {
