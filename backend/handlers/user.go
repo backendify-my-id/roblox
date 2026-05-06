@@ -58,8 +58,26 @@ func UpdateStealthMode(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
+	var user models.User
+	if err := database.DB.First(&user, userID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	wasStealth := user.IsStealth
+
 	if err := database.DB.Model(&models.User{}).Where("id = ?", userID).Update("is_stealth", req.IsStealth).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal memperbarui pengaturan"})
+	}
+
+	// Jika mode siluman diaktifkan, buat log fake offline agar non-exempt user melihatnya
+	if req.IsStealth && !wasStealth {
+		fakeLog := models.ActivityLog{
+			UserID:    userID,
+			Status:    "Stealth Offline",
+			GameName:  "-",
+			IsStealth: true,
+		}
+		database.DB.Create(&fakeLog)
 	}
 
 	return c.JSON(fiber.Map{"message": "Mode Siluman diperbarui", "is_stealth": req.IsStealth})

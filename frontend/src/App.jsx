@@ -5,6 +5,7 @@ import FriendCard from './components/FriendCard';
 import ActivityModal from './components/ActivityModal';
 import ProfileChangeModal from './components/ProfileChangeModal';
 import SettingsModal from './components/SettingsModal';
+import AdminDashboard from './components/AdminDashboard';
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 function Dashboard({ user, showToast }) {
@@ -257,6 +258,7 @@ function App() {
     try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
   });
   const [toast, setToast] = useState(null);
+  const [currentView, setCurrentView] = useState('dashboard');
 
   const showToastMsg = (message, type = 'success') => {
     setToast({ message, type });
@@ -268,14 +270,13 @@ function App() {
     if (user && token) {
       showToastMsg(`Selamat datang kembali, ${user.displayName}!`);
     }
-  }, [user?.id]); // Hanya trigger jika ID user berubah (login baru)
+  }, [user?.id]);
 
   const handleLogin = (newToken, newUser) => {
     localStorage.setItem('token', newToken);
     localStorage.setItem('user', JSON.stringify(newUser));
     setToken(newToken);
     setUser(newUser);
-    // Kita bisa menambahkan trigger toast di Dashboard nanti saat Dashboard di-mount
   };
 
   const handleLogout = async () => {
@@ -288,6 +289,7 @@ function App() {
     localStorage.removeItem('user');
     setToken(null);
     setUser(null);
+    setCurrentView('dashboard');
     showToastMsg('Anda telah berhasil keluar.', 'success');
   };
 
@@ -307,10 +309,24 @@ function App() {
 
   return (
     <>
-      <div style={{ position: 'absolute', top: '1rem', right: '1rem', zIndex: 100 }}>
+      <div style={{ position: 'absolute', top: '1rem', right: '1rem', zIndex: 100, display: 'flex', gap: '0.5rem' }}>
+        {user.role === 'admin' && currentView === 'dashboard' && (
+          <button 
+            onClick={() => setCurrentView('admin')} 
+            style={{ padding: '0.4rem 1rem', borderRadius: '0.5rem', background: '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer' }}
+          >
+            Admin Panel
+          </button>
+        )}
         <button onClick={handleLogout} style={{ padding: '0.4rem 1rem', borderRadius: '0.5rem', background: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer' }}>Logout</button>
       </div>
-      <Dashboard user={user} showToast={showToastMsg} />
+
+      {currentView === 'dashboard' ? (
+        <Dashboard user={user} showToast={showToastMsg} />
+      ) : (
+        <AdminDashboard user={user} showToast={showToastMsg} onBack={() => setCurrentView('dashboard')} />
+      )}
+
       {toast && (
         <div className={`toast toast-${toast.type}`}>
           <span>{toast.type === 'success' ? '✅' : '❌'}</span>

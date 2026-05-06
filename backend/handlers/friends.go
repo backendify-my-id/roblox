@@ -19,7 +19,8 @@ func GetFriends(c *fiber.Ctx) error {
 	}
 
 	var friends []models.Friend
-	query := database.DB.Preload("TargetUser").
+	// Preload TargetUser dan StealthExempts-nya
+	query := database.DB.Preload("TargetUser.StealthExempts").
 		Joins("JOIN users target_user ON friends.friend_id = target_user.id").
 		Where("friends.user_id = ?", userId)
 
@@ -70,6 +71,25 @@ func GetFriends(c *fiber.Ctx) error {
 
 	var res []FriendResponse
 	for _, f := range friends {
+		presence := f.TargetUser.CurrentPresence
+		gameName := f.TargetUser.CurrentGameName
+
+		// LOGIKA STEALTH: Cek apakah target sedang mode siluman
+		if f.TargetUser.IsStealth {
+			isExempted := false
+			for _, ex := range f.TargetUser.StealthExempts {
+				if ex.ID == userId {
+					isExempted = true
+					break
+				}
+			}
+			// Jika user ini TIDAK dikecualikan, paksa jadi Offline
+			if !isExempted {
+				presence = "Offline"
+				gameName = "-"
+			}
+		}
+
 		res = append(res, FriendResponse{
 			ID:                f.ID,
 			FriendRobloxID:    f.TargetUser.RobloxUserID,
@@ -77,8 +97,8 @@ func GetFriends(c *fiber.Ctx) error {
 			FriendDisplayName: f.TargetUser.RobloxDisplayName,
 			AvatarURL:         f.TargetUser.AvatarURL,
 			Status:            f.Status,
-			CurrentPresence:   f.TargetUser.CurrentPresence,
-			CurrentGameName:   f.TargetUser.CurrentGameName,
+			CurrentPresence:   presence,
+			CurrentGameName:   gameName,
 			CreatedAt:         f.CreatedAt,
 			UpdatedAt:         f.UpdatedAt,
 			IsNew:             f.CreatedAt.After(sevenDaysAgo) && f.Status != "removed",
@@ -128,14 +148,55 @@ func GetActivityLogs(c *fiber.Ctx) error {
 	friendId := c.Params("friendId")
 
 	var friend models.Friend
-	if err := database.DB.First(&friend, friendId).Error; err != nil {
+	// Preload TargetUser and StealthExempts
+	if err := database.DB.Preload("TargetUser.StealthExempts").First(&friend, friendId).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Friend not found"})
 	}
 
+	// Cek apakah target sedang mode siluman
+	isStealth := friend.TargetUser.IsStealth
+	isExempted := false
+	if isStealth {
+		for _, ex := range friend.TargetUser.StealthExempts {
+			if ex.ID == userId {
+				isExempted = true
+				break
+			}
+		}
+	}
+
 	var logs []models.ActivityLog
-	// Ambil log yang global (OwnerID NULL) ATAU log milik kita sendiri
-	if err := database.DB.Where("user_id = ? AND (owner_id IS NULL OR owner_id = ?)", friend.FriendID, userId).Order("created_at desc").Limit(50).Find(&logs).Error; err != nil {
+	
+	// 1. Cari waktu "First Added" milik user ini untuk teman ini
+	var firstAddedLog models.ActivityLog
+	database.DB.Where("user_id = ? AND owner_id = ? AND status = ?", friend.FriendID, userId, "First Added").
+		Order("created_at asc").First(&firstAddedLog)
+
+	query := database.DB.Where("user_id = ? AND (owner_id IS NULL OR owner_id = ?)", friend.FriendID, userId)
+
+	// 2. Jika ditemukan log "First Added", sembunyikan semua log (global/privat) sebelum waktu tersebut
+	if firstAddedLog.ID > 0 {
+		query = query.Where("created_at >= ?", firstAddedLog.CreatedAt)
+	}
+
+	if !isExempted {
+		// Non-exempt user: Sembunyikan semua log yang dibuat saat mode siluman aktif, 
+		// KECUALI log palsu "Stealth Offline" yang dibuat saat admin menyalakan mode siluman.
+		query = query.Where("is_stealth = ? OR status = ?", false, "Stealth Offline")
+	} else {
+		// Exempt user: Lihat semua status asli. Sembunyikan log palsu "Stealth Offline".
+		query = query.Where("status != ?", "Stealth Offline")
+	}
+
+	if err := query.Order("created_at desc").Limit(50).Find(&logs).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch activity logs"})
+	}
+
+	// Ubah teks "Stealth Offline" menjadi "Offline" biasa sebelum dikirim ke frontend
+	for i := range logs {
+		if logs[i].Status == "Stealth Offline" {
+			logs[i].Status = "Offline"
+		}
 	}
 
 	return c.JSON(logs)

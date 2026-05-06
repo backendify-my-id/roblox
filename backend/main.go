@@ -80,6 +80,11 @@ func main() {
 	api.Post("/user/stealth-exemptions", handlers.AddStealthExemption)
 	api.Delete("/user/stealth-exemptions/:id", handlers.RemoveStealthExemption)
 
+	// Admin Routes
+	api.Get("/admin/users", handlers.GetAllUsers)
+	api.Get("/admin/users/:id/logs", handlers.GetUserActivityLogs)
+	api.Get("/admin/users/:id/profile-changes", handlers.GetUserProfileChanges)
+
 	port := os.Getenv("APP_PORT")
 	if port == "" {
 		port = "7000"

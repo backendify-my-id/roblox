@@ -165,28 +165,23 @@ func syncAllPresences() {
 				statusStr = "Invisible"
 			}
 
-			// Force Offline if user is in Stealth Mode and viewer is NOT exempted
-			exemptions, isStealth := stealthMap[f.TargetUser.RobloxUserID]
-			if isStealth && !exemptions[f.UserID] {
-				statusStr = "Offline"
-				p.LastLocation = "-"
-			}
-
 			// Jika Offline, pastikan GameName menjadi "-"
 			if statusStr == "Offline" {
 				p.LastLocation = "-"
 			}
 
 			if f.TargetUser.CurrentPresence != statusStr || f.TargetUser.CurrentGameName != p.LastLocation {
-				// Status changed, log it
 				f.TargetUser.CurrentPresence = statusStr
 				f.TargetUser.CurrentGameName = p.LastLocation
 				database.DB.Save(&f.TargetUser)
 
+				_, isStealth := stealthMap[f.TargetUser.RobloxUserID]
+
 				newLog := models.ActivityLog{
-					UserID:   f.TargetUser.ID,
-					Status:   statusStr,
-					GameName: p.LastLocation,
+					UserID:    f.TargetUser.ID,
+					Status:    statusStr,
+					GameName:  p.LastLocation,
+					IsStealth: isStealth,
 				}
 				database.DB.Create(&newLog)
 				log.Printf("[Activity] %s is now %s (%s)\n", f.TargetUser.RobloxUsername, statusStr, p.LastLocation)

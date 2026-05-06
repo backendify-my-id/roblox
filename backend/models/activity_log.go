@@ -14,5 +14,6 @@ type ActivityLog struct {
 
 	Status    string    `gorm:"type:varchar(50);not null" json:"status"` // Offline, Online, In-Game
 	GameName  string    `gorm:"type:varchar(255)" json:"game_name"`
+	IsStealth bool      `gorm:"default:false" json:"is_stealth"` // True jika log ini dibuat saat user sedang mode siluman
 	CreatedAt time.Time `gorm:"index" json:"created_at"`
 }
