@@ -1,9 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { fetchWithAuth } from '../utils/api';
 
 const SettingsModal = ({ user, onClose, showToast }) => {
-  const [isStealth, setIsStealth] = useState(user.is_stealth || false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isStealth, setIsStealth] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Ambil status terbaru dari database saat modal dibuka
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await fetchWithAuth('/api/user/settings');
+        if (!res.ok) throw new Error('Gagal mengambil pengaturan');
+        const data = await res.json();
+        setIsStealth(data.is_stealth);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchSettings();
+  }, []);
 
   const handleToggleStealth = async () => {
     setIsLoading(true);
@@ -14,12 +31,15 @@ const SettingsModal = ({ user, onClose, showToast }) => {
         body: JSON.stringify({ is_stealth: !isStealth })
       });
 
-      if (!res.ok) throw new Error('Gagal memperbarui pengaturan');
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Gagal memperbarui pengaturan');
+      }
       
       setIsStealth(!isStealth);
       showToast(`Mode Siluman ${!isStealth ? 'diaktifkan' : 'dimatikan'}`, 'success');
       
-      // Update local user data
+      // Update local storage agar header ikut sinkron (opsional)
       const updatedUser = { ...user, is_stealth: !isStealth };
       localStorage.setItem('user', JSON.stringify(updatedUser));
     } catch (err) {

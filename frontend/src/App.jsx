@@ -61,10 +61,10 @@ function Dashboard({ user, showToast }) {
         const data = await res.json();
         throw new Error(data.error || 'Gagal sinkronisasi');
       }
-      showToastMsg('Sinkronisasi data berhasil!');
+      showToast('Sinkronisasi data berhasil!');
       await fetchFriends();
     } catch (err) {
-      showToastMsg(err.message, 'error');
+      showToast(err.message, 'error');
     } finally {
       setIsSyncing(false);
     }

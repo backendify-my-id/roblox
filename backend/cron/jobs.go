@@ -42,7 +42,8 @@ func syncAllFriends() {
 
 	log.Println("Starting 15-minute friends & profile sync...")
 	var users []models.User
-	if err := database.DB.Find(&users).Error; err != nil {
+	// Only sync friends for registered users (those who have a role)
+	if err := database.DB.Where("role_id IS NOT NULL").Find(&users).Error; err != nil {
 		log.Println("Error fetching users for friend sync:", err)
 		return
 	}
@@ -75,7 +76,7 @@ func syncAllPresences() {
 
 	log.Println("Starting 5-minute presence sync...")
 	var friends []models.Friend
-	if err := database.DB.Where("status = ?", "active").Find(&friends).Error; err != nil {
+	if err := database.DB.Preload("TargetUser").Where("status = ?", "active").Find(&friends).Error; err != nil {
 		log.Println("Error fetching active friends for presence sync:", err)
 		return
 	}
@@ -99,7 +100,7 @@ func syncAllPresences() {
 	idMap := make(map[uint64]bool)
 	var uniqueIDs []uint64
 	for _, f := range friends {
-		rID, err := strconv.ParseUint(f.FriendRobloxID, 10, 64)
+		rID, err := strconv.ParseUint(f.TargetUser.RobloxUserID, 10, 64)
 		if err == nil {
 			if !idMap[rID] {
 				idMap[rID] = true
@@ -130,9 +131,16 @@ func syncAllPresences() {
 		}
 	}
 
+	// Track updated user IDs to prevent duplicate logs/updates for the same user targeted by multiple people
+	updatedUserIDs := make(map[uint]bool)
+
 	// Update friends and log activities
 	for _, f := range friends {
-		rID, err := strconv.ParseUint(f.FriendRobloxID, 10, 64)
+		if updatedUserIDs[f.TargetUser.ID] {
+			continue // Already processed this user in this sync run
+		}
+
+		rID, err := strconv.ParseUint(f.TargetUser.RobloxUserID, 10, 64)
 		if err != nil {
 			continue
 		}
@@ -151,24 +159,31 @@ func syncAllPresences() {
 			}
 
 			// Force Offline if user is in Stealth Mode
-			if stealthMap[f.FriendRobloxID] {
+			if stealthMap[f.TargetUser.RobloxUserID] {
 				statusStr = "Offline"
-				p.LastLocation = ""
+				p.LastLocation = "-"
 			}
 
-			if f.CurrentPresence != statusStr || f.CurrentGameName != p.LastLocation {
+			// Jika Offline, pastikan GameName menjadi "-"
+			if statusStr == "Offline" {
+				p.LastLocation = "-"
+			}
+
+			if f.TargetUser.CurrentPresence != statusStr || f.TargetUser.CurrentGameName != p.LastLocation {
 				// Status changed, log it
-				f.CurrentPresence = statusStr
-				f.CurrentGameName = p.LastLocation
-				database.DB.Save(&f)
+				f.TargetUser.CurrentPresence = statusStr
+				f.TargetUser.CurrentGameName = p.LastLocation
+				database.DB.Save(&f.TargetUser)
 
 				newLog := models.ActivityLog{
-					FriendID: f.ID,
+					UserID:   f.TargetUser.ID,
 					Status:   statusStr,
 					GameName: p.LastLocation,
 				}
 				database.DB.Create(&newLog)
-				log.Printf("[Activity] %s is now %s (%s)\n", f.FriendUsername, statusStr, p.LastLocation)
+				log.Printf("[Activity] %s is now %s (%s)\n", f.TargetUser.RobloxUsername, statusStr, p.LastLocation)
+				
+				updatedUserIDs[f.TargetUser.ID] = true
 			}
 		}
 	}

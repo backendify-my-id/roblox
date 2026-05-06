@@ -49,7 +49,7 @@ func ConnectDB() {
 			log.Printf("Database %s does not exist, creating...", dbname)
 			defaultDB.Exec(fmt.Sprintf("CREATE DATABASE %s", dbname))
 		}
-		
+
 		sqlDefaultDB, _ := defaultDB.DB()
 		if sqlDefaultDB != nil {
 			sqlDefaultDB.Close()
@@ -78,6 +78,9 @@ func ConnectDB() {
 	sqlDB.SetMaxOpenConns(20)
 
 	log.Println("Database connection established")
+
+	// log.Println("Dropping old tables to apply breaking schema changes...")
+	// DB.Migrator().DropTable(&models.ActivityLog{}, &models.ProfileChangeLog{}, &models.Friend{}, &models.User{})
 
 	err = DB.AutoMigrate(
 		&models.Role{},

@@ -19,27 +19,26 @@ func GetFriends(c *fiber.Ctx) error {
 	}
 
 	var friends []models.Friend
-	query := database.DB.Where("user_id = ?", userId)
+	query := database.DB.Preload("TargetUser").
+		Joins("JOIN users target_user ON friends.friend_id = target_user.id").
+		Where("friends.user_id = ?", userId)
 
-	// Filter by status: ?status=active or ?status=removed
 	if statusFilter := c.Query("status"); statusFilter != "" {
-		query = query.Where("status = ?", statusFilter)
+		query = query.Where("friends.status = ?", statusFilter)
 	}
 
-	// Filter by presence: ?presence=In-Game or ?presence=Online
 	if presenceFilter := c.Query("presence"); presenceFilter != "" {
-		query = query.Where("current_presence = ?", presenceFilter)
+		query = query.Where("target_user.current_presence = ?", presenceFilter)
 	}
 
-	// Search by username or display name: ?search=keyword
 	if searchFilter := c.Query("search"); searchFilter != "" {
 		searchTerm := "%" + searchFilter + "%"
-		query = query.Where("friend_username ILIKE ? OR friend_display_name ILIKE ?", searchTerm, searchTerm)
+		query = query.Where("target_user.roblox_username ILIKE ? OR target_user.roblox_display_name ILIKE ?", searchTerm, searchTerm)
 	}
 
 	if err := query.Order(`
-		CASE status WHEN 'active' THEN 0 ELSE 1 END,
-		CASE current_presence
+		CASE friends.status WHEN 'active' THEN 0 ELSE 1 END,
+		CASE target_user.current_presence
 			WHEN 'In-Game' THEN 0
 			WHEN 'In-Studio' THEN 1
 			WHEN 'Online' THEN 2
@@ -47,25 +46,42 @@ func GetFriends(c *fiber.Ctx) error {
 			WHEN 'Offline' THEN 4
 			ELSE 5
 		END,
-		friend_display_name ASC
+		target_user.roblox_display_name ASC
 	`).Find(&friends).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch friends"})
 	}
 
-	// Compute "Baru" tag (within last 7 days)
 	now := time.Now()
 	sevenDaysAgo := now.AddDate(0, 0, -7)
 
 	type FriendResponse struct {
-		models.Friend
-		IsNew bool `json:"is_new"`
+		ID                uint      `json:"id"`
+		FriendRobloxID    string    `json:"friend_roblox_id"`
+		FriendUsername    string    `json:"friend_username"`
+		FriendDisplayName string    `json:"friend_display_name"`
+		AvatarURL         string    `json:"avatar_url"`
+		Status            string    `json:"status"`
+		CurrentPresence   string    `json:"current_presence"`
+		CurrentGameName   string    `json:"current_game_name"`
+		CreatedAt         time.Time `json:"created_at"`
+		UpdatedAt         time.Time `json:"updated_at"`
+		IsNew             bool      `json:"is_new"`
 	}
 
 	var res []FriendResponse
 	for _, f := range friends {
 		res = append(res, FriendResponse{
-			Friend: f,
-			IsNew:  f.CreatedAt.After(sevenDaysAgo) && f.Status != "removed",
+			ID:                f.ID,
+			FriendRobloxID:    f.TargetUser.RobloxUserID,
+			FriendUsername:    f.TargetUser.RobloxUsername,
+			FriendDisplayName: f.TargetUser.RobloxDisplayName,
+			AvatarURL:         f.TargetUser.AvatarURL,
+			Status:            f.Status,
+			CurrentPresence:   f.TargetUser.CurrentPresence,
+			CurrentGameName:   f.TargetUser.CurrentGameName,
+			CreatedAt:         f.CreatedAt,
+			UpdatedAt:         f.UpdatedAt,
+			IsNew:             f.CreatedAt.After(sevenDaysAgo) && f.Status != "removed",
 		})
 	}
 
@@ -86,7 +102,6 @@ func ManualSync(c *fiber.Ctx) error {
 
 	log.Printf("[ManualSync] Syncing friends for user %s (roblox_id=%s)", user.RobloxUsername, user.RobloxUserID)
 
-	// Redis Rate Limiting: 1 sync per 2 minutes per user
 	lockKey := fmt.Sprintf("lock:manual_sync:%d", userId)
 	isLocked, _ := cache.RDB.Get(cache.Ctx, lockKey).Result()
 	if isLocked != "" {
@@ -100,17 +115,26 @@ func ManualSync(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to sync friends: " + err.Error()})
 	}
 
-	// Set lock for 2 minutes
 	cache.RDB.Set(cache.Ctx, lockKey, "locked", 2*time.Minute)
 
 	return c.JSON(fiber.Map{"message": "Sync successful"})
 }
 
 func GetActivityLogs(c *fiber.Ctx) error {
+	userId, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
 	friendId := c.Params("friendId")
 
+	var friend models.Friend
+	if err := database.DB.First(&friend, friendId).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Friend not found"})
+	}
+
 	var logs []models.ActivityLog
-	if err := database.DB.Where("friend_id = ?", friendId).Order("created_at desc").Limit(50).Find(&logs).Error; err != nil {
+	// Ambil log yang global (OwnerID NULL) ATAU log milik kita sendiri
+	if err := database.DB.Where("user_id = ? AND (owner_id IS NULL OR owner_id = ?)", friend.FriendID, userId).Order("created_at desc").Limit(50).Find(&logs).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch activity logs"})
 	}
 
@@ -118,10 +142,20 @@ func GetActivityLogs(c *fiber.Ctx) error {
 }
 
 func GetProfileChangeLogs(c *fiber.Ctx) error {
+	userId, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
 	friendId := c.Params("friendId")
 
+	var friend models.Friend
+	if err := database.DB.First(&friend, friendId).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Friend not found"})
+	}
+
 	var logs []models.ProfileChangeLog
-	if err := database.DB.Where("friend_id = ?", friendId).Order("created_at desc").Limit(50).Find(&logs).Error; err != nil {
+	// Log perubahan profil sekarang bersifat privat per pelacak
+	if err := database.DB.Where("user_id = ? AND owner_id = ?", friend.FriendID, userId).Order("created_at desc").Limit(50).Find(&logs).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch profile change logs"})
 	}
 

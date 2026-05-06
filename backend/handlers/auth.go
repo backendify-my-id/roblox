@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -30,17 +31,22 @@ func Register(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Username and password are required"})
 	}
 
-	// Check if user already exists
-	var existingUser models.User
-	database.DB.Where("roblox_username = ?", req.Username).First(&existingUser)
-	if existingUser.ID != 0 {
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Username already exists in database"})
-	}
-
-	// Validate against Roblox API
+	// Validate against Roblox API first to get the exact ID
 	robloxId, correctUsername, displayName, err := services.ValidateUsername(req.Username)
 	if err != nil {
+		log.Printf("[Register] Validation failed for username %s: %v", req.Username, err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Failed to validate Roblox username: " + err.Error()})
+	}
+
+	robloxIdStr := fmt.Sprintf("%d", robloxId)
+
+	// Check if user already exists in our DB
+	var existingUser models.User
+	database.DB.Where("roblox_user_id = ?", robloxIdStr).First(&existingUser)
+
+	if existingUser.ID != 0 && existingUser.RoleID != nil {
+		// User exists and is already registered (has a role)
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Username already exists in database"})
 	}
 
 	// Fetch Avatar
@@ -60,18 +66,33 @@ func Register(c *fiber.Ctx) error {
 	var role models.Role
 	database.DB.Where("name = ?", "user").First(&role)
 
-	user := models.User{
-		RobloxUserID:      fmt.Sprintf("%d", robloxId),
-		RobloxUsername:    correctUsername,
-		RobloxDisplayName: displayName,
-		PasswordHash:      string(hashedPassword),
-		AvatarURL:         avatarUrl,
-		CreatedAt:         time.Now(),
-		RoleID:            role.ID,
-	}
+	if existingUser.ID != 0 {
+		// User exists but was just a synced friend (no role/password).
+		// We upgrade them to a full user.
+		existingUser.RobloxUsername = correctUsername
+		existingUser.RobloxDisplayName = displayName
+		existingUser.PasswordHash = string(hashedPassword)
+		existingUser.AvatarURL = avatarUrl
+		existingUser.RoleID = &role.ID
+		
+		if err := database.DB.Save(&existingUser).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to upgrade user account"})
+		}
+	} else {
+		// Completely new user
+		user := models.User{
+			RobloxUserID:      robloxIdStr,
+			RobloxUsername:    correctUsername,
+			RobloxDisplayName: displayName,
+			PasswordHash:      string(hashedPassword),
+			AvatarURL:         avatarUrl,
+			CreatedAt:         time.Now(),
+			RoleID:            &role.ID,
+		}
 
-	if err := database.DB.Create(&user).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create user"})
+		if err := database.DB.Create(&user).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create user"})
+		}
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "User registered successfully"})

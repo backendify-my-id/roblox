@@ -4,7 +4,14 @@ import "time"
 
 type ActivityLog struct {
 	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	FriendID  uint      `gorm:"index;not null" json:"friend_id"`
+	
+	UserID    uint      `gorm:"index;not null" json:"user_id"` 
+	User      User      `gorm:"foreignKey:UserID" json:"user"` // Relasi GORM
+
+	// Jika diisi, log ini hanya terlihat oleh pemilik ID ini (misal: "First Added")
+	// Jika NULL, log ini bersifat global (misal: "In-Game")
+	OwnerID   *uint     `gorm:"index" json:"owner_id,omitempty"` 
+
 	Status    string    `gorm:"type:varchar(50);not null" json:"status"` // Offline, Online, In-Game
 	GameName  string    `gorm:"type:varchar(255)" json:"game_name"`
 	CreatedAt time.Time `gorm:"index" json:"created_at"`

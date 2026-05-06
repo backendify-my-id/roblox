@@ -20,7 +20,6 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 		return err
 	}
 
-	// Create map for fast lookup
 	rfMap := make(map[string]FriendData)
 	var friendRobloxIDs []uint64
 	for _, rf := range robloxFriends {
@@ -28,25 +27,24 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 		friendRobloxIDs = append(friendRobloxIDs, rf.Id)
 	}
 
-	// Fetch avatars
 	avatars, _ := GetAvatars(friendRobloxIDs)
 
 	var existingFriends []models.Friend
-	database.DB.Where("user_id = ?", userID).Find(&existingFriends)
+	database.DB.Preload("TargetUser").Where("user_id = ?", userID).Find(&existingFriends)
 
 	efMap := make(map[string]models.Friend)
 	for _, ef := range existingFriends {
-		efMap[ef.FriendRobloxID] = ef
+		if ef.TargetUser.ID != 0 {
+			efMap[ef.TargetUser.RobloxUserID] = ef
+		}
 	}
 
 	var nameFetchIDs []uint64
 	for _, rf := range robloxFriends {
 		fIDStr := fmt.Sprintf("%d", rf.Id)
 		if _, exists := efMap[fIDStr]; !exists {
-			// New friend, always fetch name
 			nameFetchIDs = append(nameFetchIDs, rf.Id)
 		} else if checkNames {
-			// Existing friend, fetch name if checkNames is true
 			nameFetchIDs = append(nameFetchIDs, rf.Id)
 		}
 	}
@@ -62,7 +60,6 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 	for _, rf := range robloxFriends {
 		fIDStr := fmt.Sprintf("%d", rf.Id)
 		
-		// Set names from fetch if available, else keep whatever came from GetFriends (usually empty)
 		rfName := rf.Name
 		rfDisplayName := rf.DisplayName
 		if n, ok := names[rf.Id]; ok {
@@ -70,82 +67,83 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 			rfDisplayName = n.DisplayName
 		}
 
-		if ef, exists := efMap[fIDStr]; exists {
-			// Check profile changes
-			changed := false
-			if checkNames {
-				if rfName != "" && ef.FriendUsername != rfName {
-					logChange(ef.ID, ef.FriendUsername, "username", ef.FriendUsername, rfName)
-					ef.FriendUsername = rfName
-					changed = true
-				}
-				if rfDisplayName != "" && ef.FriendDisplayName != rfDisplayName {
-					logChange(ef.ID, ef.FriendUsername, "display_name", ef.FriendDisplayName, rfDisplayName)
-					ef.FriendDisplayName = rfDisplayName
-					changed = true
-				}
-			}
-			if avatars[rf.Id] != "" && ef.AvatarURL != avatars[rf.Id] {
-				logChange(ef.ID, ef.FriendUsername, "avatar", ef.AvatarURL, avatars[rf.Id])
-				ef.AvatarURL = avatars[rf.Id]
-				changed = true
-			}
-			if ef.Status == "removed" {
-				ef.Status = "active"
-				changed = true
-
-				// Catat saat berteman kembali
-				readdedLog := models.ActivityLog{
-					FriendID: ef.ID,
-					Status:   "Added Again",
-					GameName: "-",
-				}
-				database.DB.Create(&readdedLog)
-			}
-			if changed {
-				database.DB.Save(&ef)
-			}
-		} else {
-			// New friend
-			newFriend := models.Friend{
-				UserID:            userID,
-				FriendRobloxID:    fIDStr,
-				FriendUsername:    rfName,
-				FriendDisplayName: rfDisplayName,
+		var targetUser models.User
+		if err := database.DB.Where("roblox_user_id = ?", fIDStr).First(&targetUser).Error; err != nil {
+			targetUser = models.User{
+				RobloxUserID:      fIDStr,
+				RobloxUsername:    rfName,
+				RobloxDisplayName: rfDisplayName,
 				AvatarURL:         avatars[rf.Id],
-				Status:            "active",
 				CurrentPresence:   "Offline",
 			}
+			database.DB.Create(&targetUser)
+		} else {
+			changed := false
+			if checkNames {
+				if rfName != "" && targetUser.RobloxUsername != rfName {
+					logChange(targetUser.ID, userID, targetUser.RobloxUsername, "username", targetUser.RobloxUsername, rfName)
+					targetUser.RobloxUsername = rfName
+					changed = true
+				}
+				if rfDisplayName != "" && targetUser.RobloxDisplayName != rfDisplayName {
+					logChange(targetUser.ID, userID, targetUser.RobloxUsername, "display_name", targetUser.RobloxDisplayName, rfDisplayName)
+					targetUser.RobloxDisplayName = rfDisplayName
+					changed = true
+				}
+			}
+			if avatars[rf.Id] != "" && targetUser.AvatarURL != avatars[rf.Id] {
+				logChange(targetUser.ID, userID, targetUser.RobloxUsername, "avatar", targetUser.AvatarURL, avatars[rf.Id])
+				targetUser.AvatarURL = avatars[rf.Id]
+				changed = true
+			}
+			if changed {
+				database.DB.Save(&targetUser)
+			}
+		}
+
+		if ef, exists := efMap[fIDStr]; exists {
+			if ef.Status == "removed" {
+				ef.Status = "active"
+				database.DB.Save(&ef)
+				database.DB.Create(&models.ActivityLog{
+					UserID:   targetUser.ID,
+					OwnerID:  &userID,
+					Status:   "Added Again",
+					GameName: "-",
+				})
+			}
+		} else {
+			newFriend := models.Friend{
+				UserID:   userID,
+				FriendID: targetUser.ID,
+				Status:   "active",
+			}
 			database.DB.Create(&newFriend)
-			
-			// Catat saat pertama kali ditambahkan
-			firstAddLog := models.ActivityLog{
-				FriendID: newFriend.ID,
+			database.DB.Create(&models.ActivityLog{
+				UserID:   targetUser.ID,
+				OwnerID:  &userID,
 				Status:   "First Added",
 				GameName: "-",
-			}
-			database.DB.Create(&firstAddLog)
-
-			log.Printf("[Sync] New friend added: %s (%s)\n", newFriend.FriendUsername, newFriend.FriendRobloxID)
+			})
+			log.Printf("[Sync] New friend added: %s (%s)\n", targetUser.RobloxUsername, targetUser.RobloxUserID)
 		}
 	}
 
-	// Check for removed friends
 	for _, ef := range existingFriends {
-		if _, exists := rfMap[ef.FriendRobloxID]; !exists {
+		if ef.TargetUser.ID == 0 {
+			continue // Skip invalid relations
+		}
+		if _, exists := rfMap[ef.TargetUser.RobloxUserID]; !exists {
 			if ef.Status != "removed" {
 				ef.Status = "removed"
 				database.DB.Save(&ef)
-				
-				// Catat ke Activity Log agar waktu terdeteksi tersimpan
-				unfriendLog := models.ActivityLog{
-					FriendID: ef.ID,
+				database.DB.Create(&models.ActivityLog{
+					UserID:   ef.TargetUser.ID,
+					OwnerID:  &userID,
 					Status:   "Removed",
 					GameName: "-",
-				}
-				database.DB.Create(&unfriendLog)
-
-				log.Printf("[Sync] Friend removed: %s (%s)\n", ef.FriendUsername, ef.FriendRobloxID)
+				})
+				log.Printf("[Sync] Friend removed: %s (%s)\n", ef.TargetUser.RobloxUsername, ef.TargetUser.RobloxUserID)
 			}
 		}
 	}
@@ -153,13 +151,14 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 	return nil
 }
 
-func logChange(friendID uint, username, changeType, oldVal, newVal string) {
+func logChange(targetUserID uint, ownerID uint, username, changeType, oldVal, newVal string) {
 	dbLog := models.ProfileChangeLog{
-		FriendID:   friendID,
+		UserID:     targetUserID,
+		OwnerID:    &ownerID,
 		ChangeType: changeType,
 		OldValue:   oldVal,
 		NewValue:   newVal,
 	}
 	database.DB.Create(&dbLog)
-	log.Printf("[Profile] Change detected for %s (ID %d): %s changed from '%s' to '%s'\n", username, friendID, changeType, oldVal, newVal)
+	log.Printf("[Profile] Change detected for %s (ID %d): %s changed from '%s' to '%s'\n", username, targetUserID, changeType, oldVal, newVal)
 }
