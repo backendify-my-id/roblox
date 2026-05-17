@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 
+	"strings"
+
 	"github.com/apany/roblox-friend-tracker/cache"
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
@@ -13,7 +15,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
-	"strings"
 )
 
 type AuthRequest struct {
@@ -74,7 +75,7 @@ func Register(c *fiber.Ctx) error {
 		existingUser.PasswordHash = string(hashedPassword)
 		existingUser.AvatarURL = avatarUrl
 		existingUser.RoleID = &role.ID
-		
+
 		if err := database.DB.Save(&existingUser).Error; err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to upgrade user account"})
 		}

@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 
-const FriendCard = ({ friend, onClickLog, onClickProfileLog }) => {
+const FriendCard = ({ friend, onClickLog, onClickProfileLog, onSaveNote }) => {
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [noteText, setNoteText] = useState(friend.note || '');
+
   const getStatusClass = (status) => {
     switch(status) {
       case 'Online': return 'status-online';
@@ -53,6 +56,39 @@ const FriendCard = ({ friend, onClickLog, onClickProfileLog }) => {
           )}
         </>
       )}
+
+      <div style={{ marginTop: '0.75rem', background: 'rgba(0,0,0,0.15)', padding: '0.5rem', borderRadius: '0.5rem' }}>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem', display: 'flex', justifyContent: 'space-between' }}>
+          <span>📝 Note:</span>
+          {!isRemoved && (
+            <button 
+              onClick={() => {
+                if (isEditingNote) {
+                  onSaveNote(friend.id, noteText);
+                  setIsEditingNote(false);
+                } else {
+                  setIsEditingNote(true);
+                }
+              }}
+              style={{ background: 'none', border: 'none', color: isEditingNote ? '#22c55e' : '#3b82f6', cursor: 'pointer', fontSize: '0.75rem', padding: 0 }}
+            >
+              {isEditingNote ? 'Simpan' : 'Edit'}
+            </button>
+          )}
+        </div>
+        {isEditingNote ? (
+          <textarea
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder="Tulis catatan untuk teman ini..."
+            style={{ width: '100%', minHeight: '50px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '0.25rem', color: '#fff', padding: '0.4rem', fontSize: '0.8rem', resize: 'vertical' }}
+          />
+        ) : (
+          <div style={{ fontSize: '0.8rem', color: noteText ? '#fff' : 'var(--text-muted)', fontStyle: noteText ? 'normal' : 'italic' }}>
+            {noteText || 'Belum ada catatan.'}
+          </div>
+        )}
+      </div>
 
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
         <button 

@@ -75,15 +75,22 @@ func main() {
 	api.Post("/friends/sync", handlers.ManualSync)
 	api.Get("/friends/:friendId/logs", handlers.GetActivityLogs)
 	api.Get("/friends/:friendId/profile-changes", handlers.GetProfileChangeLogs)
+	api.Put("/friends/:friendId/note", handlers.UpdateFriendNote)
 	api.Get("/user/settings", handlers.GetUserSettings)
 	api.Put("/user/settings", handlers.UpdateStealthMode)
 	api.Post("/user/stealth-exemptions", handlers.AddStealthExemption)
 	api.Delete("/user/stealth-exemptions/:id", handlers.RemoveStealthExemption)
+	api.Get("/user/logs", handlers.GetMyActivityLogs)
+	api.Get("/user/profile-changes", handlers.GetMyProfileChanges)
 
 	// Admin Routes
 	api.Get("/admin/users", handlers.GetAllUsers)
 	api.Get("/admin/users/:id/logs", handlers.GetUserActivityLogs)
 	api.Get("/admin/users/:id/profile-changes", handlers.GetUserProfileChanges)
+	api.Get("/admin/users/:id/friends", handlers.GetUserFriends)
+	api.Get("/admin/users/:id/tracked-by", handlers.GetUserTrackers)
+	api.Put("/admin/users/:id/note", handlers.UpdateAdminNote)
+	api.Get("/admin/backup", handlers.BackupDatabase)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {

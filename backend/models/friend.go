@@ -15,6 +15,7 @@ type Friend struct {
 	TargetUser User     `gorm:"foreignKey:FriendID" json:"target_user"` 
 
 	Status    string    `gorm:"type:varchar(20);default:'active'" json:"status"` // active, removed
+	Note      string    `gorm:"type:text" json:"note"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

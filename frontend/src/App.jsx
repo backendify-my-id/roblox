@@ -6,6 +6,7 @@ import ActivityModal from './components/ActivityModal';
 import ProfileChangeModal from './components/ProfileChangeModal';
 import SettingsModal from './components/SettingsModal';
 import AdminDashboard from './components/AdminDashboard';
+import MyProfileModal from './components/MyProfileModal';
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 function Dashboard({ user, showToast }) {
@@ -29,6 +30,7 @@ function Dashboard({ user, showToast }) {
   const [selectedFriendLog, setSelectedFriendLog] = useState(null);
   const [selectedProfileLog, setSelectedProfileLog] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isMyProfileOpen, setIsMyProfileOpen] = useState(false);
 
   const fetchFriends = useCallback(async () => {
     setIsLoading(true);
@@ -70,7 +72,23 @@ function Dashboard({ user, showToast }) {
       setIsSyncing(false);
     }
   };
-
+  const handleSaveNote = async (friendId, newNote) => {
+    try {
+      const res = await fetchWithAuth(`/api/friends/${friendId}/note`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: newNote })
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Gagal menyimpan catatan');
+      }
+      showToast('Catatan berhasil disimpan');
+      setFriends(prev => prev.map(f => f.id === friendId ? { ...f, note: newNote } : f));
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
 
 
   return (
@@ -94,21 +112,32 @@ function Dashboard({ user, showToast }) {
             <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#fff' }}>{user.displayName}</div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>@{user.username}</div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>ID: {user.roblox_id}</div>
-            <button
-              onClick={handleManualSync}
-              disabled={isSyncing}
-              style={{ background: isSyncing ? '#334155' : '#3b82f6', color: '#fff', border: 'none', padding: '0.3rem 0.8rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: isSyncing ? 'not-allowed' : 'pointer', marginTop: '0.3rem' }}
-            >
-              {isSyncing ? 'Menyinkronkan...' : '🔄 Sync Sekarang'}
-            </button>
-            {user.role === 'admin' && (
+            
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.3rem', flexWrap: 'wrap' }}>
               <button
-                onClick={() => setIsSettingsOpen(true)}
-                style={{ background: 'transparent', color: '#94a3b8', border: '1px solid #334155', padding: '0.3rem 0.8rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: 'pointer', marginTop: '0.3rem' }}
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                style={{ background: isSyncing ? '#334155' : '#3b82f6', color: '#fff', border: 'none', padding: '0.3rem 0.8rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: isSyncing ? 'not-allowed' : 'pointer' }}
               >
-                ⚙️ Pengaturan
+                {isSyncing ? 'Menyinkronkan...' : '🔄 Sync Sekarang'}
               </button>
-            )}
+              
+              <button
+                onClick={() => setIsMyProfileOpen(true)}
+                style={{ background: '#10b981', color: '#fff', border: 'none', padding: '0.3rem 0.8rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: 'pointer' }}
+              >
+                📋 Riwayat Saya
+              </button>
+
+              {user.role === 'admin' && (
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  style={{ background: 'transparent', color: '#94a3b8', border: '1px solid #334155', padding: '0.3rem 0.8rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: 'pointer' }}
+                >
+                  ⚙️ Pengaturan
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -231,6 +260,7 @@ function Dashboard({ user, showToast }) {
                   friend={f}
                   onClickLog={setSelectedFriendLog}
                   onClickProfileLog={setSelectedProfileLog}
+                  onSaveNote={handleSaveNote}
                 />
               ))}
             </div>
@@ -246,6 +276,9 @@ function Dashboard({ user, showToast }) {
       )}
       {isSettingsOpen && (
         <SettingsModal user={user} onClose={() => setIsSettingsOpen(false)} showToast={showToast} />
+      )}
+      {isMyProfileOpen && (
+        <MyProfileModal user={user} onClose={() => setIsMyProfileOpen(false)} />
       )}
     </div>
   );

@@ -64,6 +64,7 @@ func GetFriends(c *fiber.Ctx) error {
 		Status            string    `json:"status"`
 		CurrentPresence   string    `json:"current_presence"`
 		CurrentGameName   string    `json:"current_game_name"`
+		Note              string    `json:"note"`
 		CreatedAt         time.Time `json:"created_at"`
 		UpdatedAt         time.Time `json:"updated_at"`
 		IsNew             bool      `json:"is_new"`
@@ -99,6 +100,7 @@ func GetFriends(c *fiber.Ctx) error {
 			Status:            f.Status,
 			CurrentPresence:   presence,
 			CurrentGameName:   gameName,
+			Note:              f.Note,
 			CreatedAt:         f.CreatedAt,
 			UpdatedAt:         f.UpdatedAt,
 			IsNew:             f.CreatedAt.After(sevenDaysAgo) && f.Status != "removed",
@@ -147,6 +149,10 @@ func GetActivityLogs(c *fiber.Ctx) error {
 	}
 	friendId := c.Params("friendId")
 
+	// Ambil offset dari query parameter
+	offset := c.QueryInt("offset", 0)
+	limit := 50 // Tetapkan limit per halaman
+
 	var friend models.Friend
 	// Preload TargetUser and StealthExempts
 	if err := database.DB.Preload("TargetUser.StealthExempts").First(&friend, friendId).Error; err != nil {
@@ -188,7 +194,7 @@ func GetActivityLogs(c *fiber.Ctx) error {
 		query = query.Where("status != ?", "Stealth Offline")
 	}
 
-	if err := query.Order("created_at desc").Limit(50).Find(&logs).Error; err != nil {
+	if err := query.Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch activity logs"})
 	}
 
@@ -209,6 +215,10 @@ func GetProfileChangeLogs(c *fiber.Ctx) error {
 	}
 	friendId := c.Params("friendId")
 
+	// Ambil offset dari query parameter
+	offset := c.QueryInt("offset", 0)
+	limit := 50
+
 	var friend models.Friend
 	if err := database.DB.First(&friend, friendId).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Friend not found"})
@@ -216,9 +226,36 @@ func GetProfileChangeLogs(c *fiber.Ctx) error {
 
 	var logs []models.ProfileChangeLog
 	// Log perubahan profil sekarang bersifat privat per pelacak
-	if err := database.DB.Where("user_id = ? AND owner_id = ?", friend.FriendID, userId).Order("created_at desc").Limit(50).Find(&logs).Error; err != nil {
+	if err := database.DB.Where("user_id = ? AND owner_id = ?", friend.FriendID, userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch profile change logs"})
 	}
 
 	return c.JSON(logs)
+}
+
+func UpdateFriendNote(c *fiber.Ctx) error {
+	userId, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+	friendId := c.Params("friendId")
+
+	var input struct {
+		Note string `json:"note"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
+	}
+
+	var friend models.Friend
+	if err := database.DB.Where("id = ? AND user_id = ?", friendId, userId).First(&friend).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Friend not found or you do not have permission"})
+	}
+
+	friend.Note = input.Note
+	if err := database.DB.Save(&friend).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update note"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Note updated successfully", "note": friend.Note})
 }

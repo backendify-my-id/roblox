@@ -1,6 +1,11 @@
 package handlers
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"time"
+
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
 	"github.com/gofiber/fiber/v2"
@@ -31,6 +36,7 @@ func GetAllUsers(c *fiber.Ctx) error {
 		RoleName          string    `json:"role_name"`
 		IsRegistered      bool      `json:"is_registered"`
 		FriendsCount      int       `json:"friends_count"`
+		AdminNote         string    `json:"admin_note"`
 		CreatedAt         string    `json:"created_at"`
 	}
 
@@ -57,6 +63,7 @@ func GetAllUsers(c *fiber.Ctx) error {
 			RoleName:          roleName,
 			IsRegistered:      isRegistered,
 			FriendsCount:      len(u.Friends),
+			AdminNote:         u.AdminNote,
 			CreatedAt:         u.CreatedAt.Format("02/01/2006, 15:04:05"),
 		})
 	}
@@ -71,9 +78,11 @@ func GetUserActivityLogs(c *fiber.Ctx) error {
 	}
 
 	userId := c.Params("id")
+	offset := c.QueryInt("offset", 0)
+	limit := 100
 
 	var logs []models.ActivityLog
-	if err := database.DB.Where("user_id = ?", userId).Order("created_at desc").Limit(100).Find(&logs).Error; err != nil {
+	if err := database.DB.Where("user_id = ?", userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch activity logs"})
 	}
 
@@ -87,11 +96,174 @@ func GetUserProfileChanges(c *fiber.Ctx) error {
 	}
 
 	userId := c.Params("id")
+	offset := c.QueryInt("offset", 0)
+	limit := 100
 
 	var logs []models.ProfileChangeLog
-	if err := database.DB.Where("user_id = ?", userId).Order("created_at desc").Limit(100).Find(&logs).Error; err != nil {
+	if err := database.DB.Where("user_id = ?", userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch profile change logs"})
 	}
 
 	return c.JSON(logs)
+}
+
+func GetUserFriends(c *fiber.Ctx) error {
+	role := c.Locals("role").(string)
+	if role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
+	}
+
+	userId := c.Params("id")
+	offset := c.QueryInt("offset", 0)
+	limit := 100
+
+	var friends []models.Friend
+	// Preload target user details
+	if err := database.DB.Preload("TargetUser").Where("user_id = ?", userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&friends).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch user friends"})
+	}
+
+	// Buat response custom
+	type FriendResponse struct {
+		ID                uint   `json:"id"`
+		FriendID          uint   `json:"friend_id"`
+		FriendRobloxID    string `json:"friend_roblox_id"`
+		FriendUsername    string `json:"friend_username"`
+		FriendDisplayName string `json:"friend_display_name"`
+		AvatarURL         string `json:"avatar_url"`
+		Status            string `json:"status"`
+		Note              string `json:"note"`
+		CreatedAt         string `json:"created_at"`
+	}
+
+	var res []FriendResponse
+	for _, f := range friends {
+		res = append(res, FriendResponse{
+			ID:                f.ID,
+			FriendID:          f.TargetUser.ID,
+			FriendRobloxID:    f.TargetUser.RobloxUserID,
+			FriendUsername:    f.TargetUser.RobloxUsername,
+			FriendDisplayName: f.TargetUser.RobloxDisplayName,
+			AvatarURL:         f.TargetUser.AvatarURL,
+			Status:            f.Status,
+			Note:              f.Note,
+			CreatedAt:         f.CreatedAt.Format("02/01/2006, 15:04:05"),
+		})
+	}
+
+	return c.JSON(res)
+}
+
+func GetUserTrackers(c *fiber.Ctx) error {
+	role := c.Locals("role").(string)
+	if role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
+	}
+
+	userId := c.Params("id")
+	
+	type TrackerResult struct {
+		ID                uint   `json:"id"`
+		RobloxUserID      string `json:"roblox_user_id"`
+		RobloxUsername    string `json:"roblox_username"`
+		RobloxDisplayName string `json:"roblox_display_name"`
+		AvatarURL         string `json:"avatar_url"`
+		RoleName          string `json:"role_name"`
+		Status            string `json:"status"`
+		Note              string `json:"note"`
+		CreatedAt         string `json:"created_at"`
+	}
+
+	var results []TrackerResult
+	
+	query := `
+		SELECT 
+			u.id, u.roblox_user_id, u.roblox_username, u.roblox_display_name, u.avatar_url,
+			COALESCE(r.name, 'Synced Friend') as role_name,
+			f.status, f.note, f.created_at
+		FROM friends f
+		JOIN users u ON f.user_id = u.id
+		LEFT JOIN roles r ON u.role_id = r.id
+		WHERE f.friend_id = ?
+		ORDER BY f.created_at DESC
+	`
+	
+	if err := database.DB.Raw(query, userId).Scan(&results).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch user trackers"})
+	}
+	
+	// Format time string if needed, but DB.Raw returns time in a string-compatible struct if scanned directly to string,
+	// though standard time format might be ugly (RFC3339). Let's use a struct with time.Time and format it.
+
+	return c.JSON(results)
+}
+
+func UpdateAdminNote(c *fiber.Ctx) error {
+	role := c.Locals("role").(string)
+	if role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
+	}
+
+	userId := c.Params("id")
+
+	var input struct {
+		AdminNote string `json:"admin_note"`
+	}
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
+	}
+
+	var user models.User
+	if err := database.DB.First(&user, userId).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	user.AdminNote = input.AdminNote
+	if err := database.DB.Save(&user).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update admin note"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Admin note updated successfully", "admin_note": user.AdminNote})
+}
+
+func BackupDatabase(c *fiber.Ctx) error {
+	role := c.Locals("role").(string)
+	if role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
+	}
+
+	host := os.Getenv("DB_HOST")
+	user := os.Getenv("DB_USER")
+	password := os.Getenv("DB_PASSWORD")
+	dbname := os.Getenv("DB_NAME")
+	port := os.Getenv("DB_PORT")
+
+	if host == "" {
+		host = "localhost"
+	}
+	if user == "" {
+		user = "roblox_user"
+	}
+	if password == "" {
+		password = "roblox_password"
+	}
+	if dbname == "" {
+		dbname = "roblox_tracker"
+	}
+	if port == "" {
+		port = "5432"
+	}
+
+	cmd := exec.Command("pg_dump", "-h", host, "-p", port, "-U", user, "-d", dbname, "-F", "p")
+	cmd.Env = append(os.Environ(), "PGPASSWORD="+password)
+
+	out, err := cmd.Output()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to run pg_dump: " + err.Error()})
+	}
+
+	filename := fmt.Sprintf("roblox_tracker_backup_%s.sql", time.Now().Format("2006-01-02_15-04-05"))
+	c.Set("Content-Disposition", "attachment; filename="+filename)
+	c.Set("Content-Type", "application/sql")
+	return c.Send(out)
 }

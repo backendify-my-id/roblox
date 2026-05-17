@@ -146,3 +146,40 @@ func RemoveStealthExemption(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{"message": "Berhasil dihapus"})
 }
+
+func GetMyActivityLogs(c *fiber.Ctx) error {
+	userId, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+	
+	offset := c.QueryInt("offset", 0)
+	limit := 100
+
+	var logs []models.ActivityLog
+	// Ambil semua log global atau log yang kita buat sendiri untuk kita
+	if err := database.DB.Where("user_id = ? AND (owner_id IS NULL OR owner_id = ?)", userId, userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch activity logs"})
+	}
+
+	return c.JSON(logs)
+}
+
+func GetMyProfileChanges(c *fiber.Ctx) error {
+	userId, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	offset := c.QueryInt("offset", 0)
+	limit := 100
+
+	var logs []models.ProfileChangeLog
+	// Ambil semua log profil milik kita
+	// Perubahan profil adalah valid milik kita terlepas dari siapa (owner_id) yang pertama kali menemukannya saat sync
+	if err := database.DB.Where("user_id = ?", userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch profile change logs"})
+	}
+
+	return c.JSON(logs)
+}
