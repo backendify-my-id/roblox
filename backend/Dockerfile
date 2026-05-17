@@ -23,8 +23,8 @@ COPY --from=builder /app/main .
 # Copy .env if needed (though environment variables are preferred in Docker)
 COPY --from=builder /app/.env .
 
-# Install ca-certificates for HTTPS requests to Roblox API
-RUN apk --no-cache add ca-certificates
+# Install ca-certificates for HTTPS requests to Roblox API and postgresql-client for backups
+RUN apk --no-cache add ca-certificates postgresql-client
 
 # Expose the port the app runs on
 EXPOSE 7000

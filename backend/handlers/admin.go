@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -257,9 +258,14 @@ func BackupDatabase(c *fiber.Ctx) error {
 	cmd := exec.Command("pg_dump", "-h", host, "-p", port, "-U", user, "-d", dbname, "-F", "p")
 	cmd.Env = append(os.Environ(), "PGPASSWORD="+password)
 
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
 	out, err := cmd.Output()
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to run pg_dump: " + err.Error()})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to run pg_dump: " + err.Error() + " (details: " + stderr.String() + ")",
+		})
 	}
 
 	filename := fmt.Sprintf("roblox_tracker_backup_%s.sql", time.Now().Format("2006-01-02_15-04-05"))
