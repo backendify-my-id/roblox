@@ -98,7 +98,7 @@ func ConnectDB() {
 	log.Println("Database schemas auto migrated")
 
 	seedRolesAndPermissions(DB)
-	backfillShadowActivities(DB)
+	// backfillShadowActivities(DB)
 }
 
 func backfillShadowActivities(db *gorm.DB) {
