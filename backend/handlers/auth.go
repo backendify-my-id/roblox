@@ -106,7 +106,7 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	var user models.User
-	if err := database.DB.Preload("Role").Where("LOWER(roblox_username) = LOWER(?)", req.Username).First(&user).Error; err != nil {
+	if err := database.DB.Preload("Role.Permissions").Where("LOWER(roblox_username) = LOWER(?)", req.Username).First(&user).Error; err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
@@ -134,6 +134,13 @@ func Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
 	}
 
+	var permissions []string
+	if user.RoleID != nil {
+		for _, p := range user.Role.Permissions {
+			permissions = append(permissions, p.Code)
+		}
+	}
+
 	return c.JSON(fiber.Map{
 		"token": t,
 		"user": fiber.Map{
@@ -143,6 +150,7 @@ func Login(c *fiber.Ctx) error {
 			"roblox_id":   user.RobloxUserID,
 			"avatar":      user.AvatarURL,
 			"role":        user.Role.Name,
+			"permissions": permissions,
 		},
 	})
 }

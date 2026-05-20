@@ -26,6 +26,8 @@ func GetFriends(c *fiber.Ctx) error {
 
 	if statusFilter := c.Query("status"); statusFilter != "" {
 		query = query.Where("friends.status = ?", statusFilter)
+	} else {
+		query = query.Where("friends.status = ?", "active")
 	}
 
 	if presenceFilter := c.Query("presence"); presenceFilter != "" {
@@ -220,13 +222,32 @@ func GetProfileChangeLogs(c *fiber.Ctx) error {
 	limit := 50
 
 	var friend models.Friend
-	if err := database.DB.First(&friend, friendId).Error; err != nil {
+	// Preload TargetUser and StealthExempts
+	if err := database.DB.Preload("TargetUser.StealthExempts").First(&friend, friendId).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Friend not found"})
 	}
 
+	// Cek apakah target sedang mode siluman
+	isStealth := friend.TargetUser.IsStealth
+	isExempted := false
+	if isStealth {
+		for _, ex := range friend.TargetUser.StealthExempts {
+			if ex.ID == userId {
+				isExempted = true
+				break
+			}
+		}
+	}
+
 	var logs []models.ProfileChangeLog
-	// Log perubahan profil sekarang bersifat privat per pelacak
-	if err := database.DB.Where("user_id = ? AND owner_id = ?", friend.FriendID, userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
+	query := database.DB.Where("user_id = ? AND owner_id = ?", friend.FriendID, userId)
+
+	if !isExempted {
+		// Non-exempt user: Sembunyikan semua log profil yang dibuat saat mode siluman aktif
+		query = query.Where("is_stealth = ?", false)
+	}
+
+	if err := query.Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch profile change logs"})
 	}
 

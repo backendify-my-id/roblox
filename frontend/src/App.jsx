@@ -326,6 +326,12 @@ function App() {
     showToastMsg('Anda telah berhasil keluar.', 'success');
   };
 
+  const hasAdminPanelAccess = user && (user.role === 'admin' || (user.permissions && (
+    user.permissions.includes('view_users_list') ||
+    user.permissions.includes('view_playing_together') ||
+    user.permissions.includes('view_shadow_activities')
+  )));
+
   if (!token || !user) {
     return (
       <>
@@ -343,7 +349,7 @@ function App() {
   return (
     <>
       <div style={{ position: 'absolute', top: '1rem', right: '1rem', zIndex: 100, display: 'flex', gap: '0.5rem' }}>
-        {user.role === 'admin' && currentView === 'dashboard' && (
+        {hasAdminPanelAccess && currentView === 'dashboard' && (
           <button 
             onClick={() => setCurrentView('admin')} 
             style={{ padding: '0.4rem 1rem', borderRadius: '0.5rem', background: '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer' }}

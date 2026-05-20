@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/apany/roblox-friend-tracker/cache"
+	"github.com/apany/roblox-friend-tracker/database"
+	"github.com/apany/roblox-friend-tracker/models"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -48,6 +50,57 @@ func Protected() fiber.Handler {
 			c.Locals("roblox_id", claims["roblox_id"])
 			c.Locals("role", claims["role"])
 		}
+
+		return c.Next()
+	}
+}
+
+func RequirePermission(code string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		roleName, ok := c.Locals("role").(string)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+		}
+
+		// Admin selalu dilewatkan (Bypass) - akses penuh, tanpa filter scope
+		if roleName == "admin" {
+			c.Locals("scope_friends_only", false)
+			return c.Next()
+		}
+
+		userIDVal := c.Locals("user_id")
+		if userIDVal == nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+		}
+
+		var user models.User
+		if err := database.DB.Preload("Role.Permissions").First(&user, userIDVal).Error; err != nil {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Akses Ditolak"})
+		}
+
+		if user.RoleID == nil {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Akses Ditolak: Peran tidak valid"})
+		}
+
+		hasPerm := false
+		scopeFriendsOnly := false
+		for _, p := range user.Role.Permissions {
+			if p.Code == code {
+				hasPerm = true
+			}
+			if p.Code == "view_scope_friends_only" {
+				scopeFriendsOnly = true
+			}
+		}
+
+		if !hasPerm {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "Forbidden: Anda tidak memiliki hak akses: " + code,
+			})
+		}
+
+		// Simpan flag scope ke context agar handler dapat memfilter data
+		c.Locals("scope_friends_only", scopeFriendsOnly)
 
 		return c.Next()
 	}

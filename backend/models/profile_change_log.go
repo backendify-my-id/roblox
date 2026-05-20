@@ -15,5 +15,6 @@ type ProfileChangeLog struct {
 	ChangeType string    `gorm:"type:varchar(50);not null" json:"change_type"` // username, display_name, avatar
 	OldValue   string    `gorm:"type:text" json:"old_value"`
 	NewValue   string    `gorm:"type:text" json:"new_value"`
+	IsStealth  bool      `gorm:"default:false" json:"is_stealth"` // True jika log dibuat saat target user sedang mode siluman
 	CreatedAt  time.Time `gorm:"index" json:"created_at"`
 }

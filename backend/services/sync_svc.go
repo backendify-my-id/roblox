@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
@@ -42,7 +43,8 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 	var nameFetchIDs []uint64
 	for _, rf := range robloxFriends {
 		fIDStr := fmt.Sprintf("%d", rf.Id)
-		if _, exists := efMap[fIDStr]; !exists {
+		ef, exists := efMap[fIDStr]
+		if !exists || ef.Status == "removed" {
 			nameFetchIDs = append(nameFetchIDs, rf.Id)
 		} else if checkNames {
 			nameFetchIDs = append(nameFetchIDs, rf.Id)
@@ -67,6 +69,9 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 			rfDisplayName = n.DisplayName
 		}
 
+		ef, exists := efMap[fIDStr]
+		isReadded := exists && ef.Status == "removed"
+
 		var targetUser models.User
 		if err := database.DB.Where("roblox_user_id = ?", fIDStr).First(&targetUser).Error; err != nil {
 			targetUser = models.User{
@@ -79,20 +84,20 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 			database.DB.Create(&targetUser)
 		} else {
 			changed := false
-			if checkNames {
+			if checkNames || isReadded {
 				if rfName != "" && targetUser.RobloxUsername != rfName {
-					logChange(targetUser.ID, userID, targetUser.RobloxUsername, "username", targetUser.RobloxUsername, rfName)
+					logChange(targetUser.ID, userID, targetUser.RobloxUsername, "username", targetUser.RobloxUsername, rfName, targetUser.IsStealth)
 					targetUser.RobloxUsername = rfName
 					changed = true
 				}
 				if rfDisplayName != "" && targetUser.RobloxDisplayName != rfDisplayName {
-					logChange(targetUser.ID, userID, targetUser.RobloxUsername, "display_name", targetUser.RobloxDisplayName, rfDisplayName)
+					logChange(targetUser.ID, userID, targetUser.RobloxUsername, "display_name", targetUser.RobloxDisplayName, rfDisplayName, targetUser.IsStealth)
 					targetUser.RobloxDisplayName = rfDisplayName
 					changed = true
 				}
 			}
 			if avatars[rf.Id] != "" && targetUser.AvatarURL != avatars[rf.Id] {
-				logChange(targetUser.ID, userID, targetUser.RobloxUsername, "avatar", targetUser.AvatarURL, avatars[rf.Id])
+				logChange(targetUser.ID, userID, targetUser.RobloxUsername, "avatar", targetUser.AvatarURL, avatars[rf.Id], targetUser.IsStealth)
 				targetUser.AvatarURL = avatars[rf.Id]
 				changed = true
 			}
@@ -151,14 +156,56 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 	return nil
 }
 
-func logChange(targetUserID uint, ownerID uint, username, changeType, oldVal, newVal string) {
+func logChange(targetUserID uint, ownerID uint, username, changeType, oldVal, newVal string, isStealth bool) {
 	dbLog := models.ProfileChangeLog{
 		UserID:     targetUserID,
 		OwnerID:    &ownerID,
 		ChangeType: changeType,
 		OldValue:   oldVal,
 		NewValue:   newVal,
+		IsStealth:  isStealth,
 	}
 	database.DB.Create(&dbLog)
-	log.Printf("[Profile] Change detected for %s (ID %d): %s changed from '%s' to '%s'\n", username, targetUserID, changeType, oldVal, newVal)
+	log.Printf("[Profile] Change detected for %s (ID %d): %s changed from '%s' to '%s' (stealth=%t)\n", username, targetUserID, changeType, oldVal, newVal, isStealth)
+
+	// Deteksi Shadow Activity secara Real-Time dengan threshold 20 menit
+	if changeType == "avatar" {
+		var u models.User
+		if err := database.DB.Select("current_presence").First(&u, targetUserID).Error; err == nil {
+			if u.CurrentPresence == "Offline" {
+				// Cari log aktivitas terakhir di mana status BUKAN Offline
+				var lastOnlineLog models.ActivityLog
+				err := database.DB.
+					Where("user_id = ? AND status NOT IN ?", targetUserID, []string{"Offline", "First Added", "Removed", "Added Again"}).
+					Order("created_at DESC").
+					First(&lastOnlineLog).Error
+
+				offlineDuration := time.Duration(0)
+				if err == nil {
+					// Ada log online sebelumnya — hitung sudah berapa lama offline
+					offlineDuration = time.Since(lastOnlineLog.CreatedAt)
+				} else {
+					// Tidak ada riwayat online sama sekali → anggap offline sangat lama
+					offlineDuration = 24 * time.Hour
+				}
+
+				const shadowThreshold = 20 * time.Minute
+				if offlineDuration >= shadowThreshold {
+					shadowAct := models.ShadowActivity{
+						UserID:     targetUserID,
+						OldAvatar:  oldVal,
+						NewAvatar:  newVal,
+						IsReviewed: false,
+						AdminNotes: "",
+					}
+					database.DB.Create(&shadowAct)
+					log.Printf("[ShadowActivity] Stealth online detected! User %s (ID %d) changed avatar while offline for %.0f minutes!\n",
+						username, targetUserID, offlineDuration.Minutes())
+				} else {
+					log.Printf("[ShadowActivity] Avatar change for %s (ID %d) skipped — offline only %.0f min (threshold: %d min)\n",
+						username, targetUserID, offlineDuration.Minutes(), int(shadowThreshold.Minutes()))
+				}
+			}
+		}
+	}
 }

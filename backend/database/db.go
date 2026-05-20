@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/apany/roblox-friend-tracker/models"
 	"gorm.io/driver/postgres"
@@ -79,31 +80,155 @@ func ConnectDB() {
 
 	log.Println("Database connection established")
 
-	// log.Println("Dropping old tables to apply breaking schema changes...")
+	// log.Println("Dropping old tables to apply breaking schema changes...")d
 	// DB.Migrator().DropTable(&models.ActivityLog{}, &models.ProfileChangeLog{}, &models.Friend{}, &models.User{})
 
 	err = DB.AutoMigrate(
+		&models.Permission{},
 		&models.Role{},
 		&models.User{},
 		&models.Friend{},
 		&models.ActivityLog{},
 		&models.ProfileChangeLog{},
+		&models.ShadowActivity{},
 	)
 	if err != nil {
 		log.Fatal("Failed to auto migrate database schemas: ", err)
 	}
 	log.Println("Database schemas auto migrated")
 
-	seedRoles(DB)
+	seedRolesAndPermissions(DB)
+	backfillShadowActivities(DB)
 }
 
-func seedRoles(db *gorm.DB) {
-	roles := []string{"admin", "user"}
-	for _, roleName := range roles {
+func backfillShadowActivities(db *gorm.DB) {
+	type TempShadow struct {
+		UserID    uint
+		OldAvatar string
+		NewAvatar string
+		CreatedAt time.Time
+	}
+
+	// Query ini menerapkan threshold 20 menit yang sama dengan deteksi real-time:
+	// hanya catat insiden siluman di mana user sudah offline selama >= 20 menit
+	// sebelum avatar berubah.
+	query := `
+		SELECT * FROM (
+			SELECT 
+				pcl.user_id,
+				pcl.old_value  AS old_avatar,
+				pcl.new_value  AS new_avatar,
+				pcl.created_at,
+				COALESCE(
+					(
+						SELECT status 
+						FROM activity_logs al 
+						WHERE al.user_id = pcl.user_id
+						  AND al.created_at <= pcl.created_at 
+						ORDER BY al.created_at DESC 
+						LIMIT 1
+					), 'Offline'
+				) AS presence_status,
+				COALESCE(
+					(
+						-- Waktu terakhir user terdeteksi TIDAK offline sebelum perubahan avatar ini
+						SELECT al.created_at
+						FROM activity_logs al
+						WHERE al.user_id = pcl.user_id
+						  AND al.created_at <= pcl.created_at
+						  AND al.status NOT IN ('Offline', 'First Added', 'Removed', 'Added Again')
+						ORDER BY al.created_at DESC
+						LIMIT 1
+					), pcl.created_at - INTERVAL '24 hours'
+				) AS last_online_at
+			FROM profile_change_logs pcl
+			WHERE pcl.change_type = 'avatar'
+		) AS sub
+		WHERE sub.presence_status = 'Offline'
+		  AND EXTRACT(EPOCH FROM (sub.created_at - sub.last_online_at)) >= 1200
+	`
+
+	var historis []TempShadow
+	if err := db.Raw(query).Scan(&historis).Error; err != nil {
+		log.Printf("[Backfill] Warning: gagal mengambil data shadow activities historis: %v", err)
+		return
+	}
+
+	count := 0
+	for _, h := range historis {
+		var exists int64
+		db.Model(&models.ShadowActivity{}).
+			Where("user_id = ? AND created_at = ?", h.UserID, h.CreatedAt).
+			Count(&exists)
+
+		if exists == 0 {
+			dbLog := models.ShadowActivity{
+				UserID:     h.UserID,
+				OldAvatar:  h.OldAvatar,
+				NewAvatar:  h.NewAvatar,
+				IsReviewed: false,
+				AdminNotes: "",
+				CreatedAt:  h.CreatedAt,
+			}
+			if err := db.Create(&dbLog).Error; err == nil {
+				count++
+			}
+		}
+	}
+
+	if count > 0 {
+		log.Printf("[Backfill] Sukses memigrasi %d data shadow activities historis ke tabel baru.\n", count)
+	}
+}
+
+func seedRolesAndPermissions(db *gorm.DB) {
+	// 1. Seed Permissions
+	perms := []models.Permission{
+		{Code: "view_users_list", Description: "Melihat daftar pengguna terdaftar"},
+		{Code: "view_playing_together", Description: "Mengakses data Co-Players (Main Bersama)"},
+		{Code: "view_shadow_activities", Description: "Mengakses log insiden siluman"},
+		{Code: "review_shadow_activities", Description: "Menandai insiden siluman sebagai selesai/ditinjau"},
+		{Code: "manage_user_permissions", Description: "Mengubah role dan hak akses pengguna"},
+		{Code: "view_scope_friends_only", Description: "Membatasi tampilan Co-Players & Shadow Activity hanya ke daftar teman sendiri"},
+	}
+
+	for _, p := range perms {
+		var existing models.Permission
+		if err := db.Where("code = ?", p.Code).First(&existing).Error; err != nil {
+			db.Create(&p)
+			log.Printf("Seeded permission: %s", p.Code)
+		} else {
+			existing.Description = p.Description
+			db.Save(&existing)
+		}
+	}
+
+	// 2. Fetch seeded permissions
+	var viewUsers, viewPlaying, viewShadow, reviewShadow, manageUser, viewScopeFriends models.Permission
+	db.Where("code = ?", "view_users_list").First(&viewUsers)
+	db.Where("code = ?", "view_playing_together").First(&viewPlaying)
+	db.Where("code = ?", "view_shadow_activities").First(&viewShadow)
+	db.Where("code = ?", "review_shadow_activities").First(&reviewShadow)
+	db.Where("code = ?", "manage_user_permissions").First(&manageUser)
+	db.Where("code = ?", "view_scope_friends_only").First(&viewScopeFriends)
+
+	// 3. Seed Roles
+	rolePermsMap := map[string][]models.Permission{
+		"admin":     {viewUsers, viewPlaying, viewShadow, reviewShadow, manageUser},
+		"moderator": {viewPlaying, viewShadow, reviewShadow},
+		// observer: dapat melihat Co-Players & Shadow Activity, namun hanya teman sendiri
+		"observer": {viewPlaying, viewShadow, viewScopeFriends},
+		"user":     {},
+	}
+
+	for roleName, permissions := range rolePermsMap {
 		var role models.Role
-		if err := db.Where("name = ?", roleName).First(&role).Error; err != nil {
-			db.Create(&models.Role{Name: roleName})
-			log.Printf("Seeded role: %s", roleName)
+		if err := db.Preload("Permissions").Where("name = ?", roleName).First(&role).Error; err != nil {
+			role = models.Role{Name: roleName, Permissions: permissions}
+			db.Create(&role)
+			log.Printf("Seeded role: %s with %d permissions", roleName, len(permissions))
+		} else {
+			db.Model(&role).Association("Permissions").Replace(permissions)
 		}
 	}
 }
