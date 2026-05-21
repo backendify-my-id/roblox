@@ -104,6 +104,11 @@ func main() {
 	api.Delete("/lists/:id/entries/:eid", handlers.DeleteGameEntry)
 	api.Patch("/lists/:id/entries/:eid/status", handlers.ToggleGameEntryStatus)
 
+	// Roblox Maps API
+	api.Get("/maps", handlers.GetRobloxMaps)
+	api.Get("/maps/search-roblox", handlers.SearchRobloxGamesOnline)
+	api.Post("/maps", handlers.CreateRobloxMap)
+
 	// Game Media API
 	api.Get("/lists/:id/entries/:eid/media", handlers.GetGameMedia)
 	api.Post("/lists/:id/entries/:eid/media", handlers.UploadGameMedia)

@@ -32,6 +32,7 @@ func GetGameEntries(c *fiber.Ctx) error {
 		Where("game_list_id = ?", listID).
 		Preload("AddedBy").
 		Preload("Media").
+		Preload("RobloxMap").
 		Find(&entries).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch game entries"})
 	}
@@ -51,9 +52,12 @@ func CreateGameEntry(c *fiber.Ctx) error {
 	}
 
 	var input struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		RobloxLink  string `json:"roblox_link"`
+		Name        string  `json:"name"`
+		Description string  `json:"description"`
+		UniverseID  *uint64 `json:"universe_id"`
+		PlaceID     *uint64 `json:"place_id"`
+		GlobalDesc  string  `json:"global_description"`
+		UrlPath     string  `json:"url_path"`
 	}
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
@@ -68,12 +72,72 @@ func CreateGameEntry(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "List not found"})
 	}
 
+	// Find or auto-create in RobloxMap
+	var robloxMap models.RobloxMap
+	if input.UniverseID != nil && *input.UniverseID > 0 {
+		if err := database.DB.Where("universe_id = ?", input.UniverseID).First(&robloxMap).Error; err == nil {
+			// Update if changed
+			hasChanged := false
+			if robloxMap.Name != input.Name {
+				robloxMap.Name = input.Name
+				hasChanged = true
+			}
+			if input.GlobalDesc != "" && robloxMap.Description != input.GlobalDesc {
+				robloxMap.Description = input.GlobalDesc
+				hasChanged = true
+			}
+			if input.UrlPath != "" && robloxMap.UrlPath != input.UrlPath {
+				robloxMap.UrlPath = input.UrlPath
+				hasChanged = true
+			}
+			if hasChanged {
+				robloxMap.UpdatedAt = time.Now()
+				database.DB.Save(&robloxMap)
+			}
+		} else {
+			// Not found by UniverseID. Search by name with no UniverseID
+			if err := database.DB.Where("name = ? AND (universe_id IS NULL OR universe_id = 0)", input.Name).First(&robloxMap).Error; err == nil {
+				robloxMap.UniverseID = input.UniverseID
+				robloxMap.PlaceID = input.PlaceID
+				if input.GlobalDesc != "" {
+					robloxMap.Description = input.GlobalDesc
+				}
+				if input.UrlPath != "" {
+					robloxMap.UrlPath = input.UrlPath
+				}
+				robloxMap.UpdatedAt = time.Now()
+				database.DB.Save(&robloxMap)
+			} else {
+				// Brand new
+				robloxMap = models.RobloxMap{
+					UniverseID:  input.UniverseID,
+					PlaceID:     input.PlaceID,
+					Name:        input.Name,
+					Description: input.GlobalDesc,
+					UrlPath:     input.UrlPath,
+					CreatedAt:   time.Now(),
+					UpdatedAt:   time.Now(),
+				}
+				database.DB.Create(&robloxMap)
+			}
+		}
+	} else {
+		// No UniverseID - Fallback to Name-only
+		if err := database.DB.Where("name = ?", input.Name).First(&robloxMap).Error; err != nil {
+			robloxMap = models.RobloxMap{
+				Name:      input.Name,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			}
+			database.DB.Create(&robloxMap)
+		}
+	}
+
 	entry := models.GameEntry{
 		GameListID:  list.ID,
 		AddedByID:   userID,
-		Name:        input.Name,
+		RobloxMapID: robloxMap.ID,
 		Description: input.Description,
-		RobloxLink:  input.RobloxLink,
 		Status:      "to_play",
 	}
 
@@ -81,8 +145,8 @@ func CreateGameEntry(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create game entry"})
 	}
 
-	// Fetch with AddedBy for return
-	database.DB.Preload("AddedBy").First(&entry, entry.ID)
+	// Fetch with AddedBy and RobloxMap for return
+	database.DB.Preload("AddedBy").Preload("RobloxMap").First(&entry, entry.ID)
 
 	return c.Status(fiber.StatusCreated).JSON(entry)
 }
@@ -105,24 +169,87 @@ func UpdateGameEntry(c *fiber.Ctx) error {
 	}
 
 	var input struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		RobloxLink  string `json:"roblox_link"`
+		Name        string  `json:"name"`
+		Description string  `json:"description"`
+		UniverseID  *uint64 `json:"universe_id"`
+		PlaceID     *uint64 `json:"place_id"`
+		GlobalDesc  string  `json:"global_description"`
+		UrlPath     string  `json:"url_path"`
 	}
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
 	}
 
 	if input.Name != "" {
-		entry.Name = input.Name
+		var robloxMap models.RobloxMap
+		if input.UniverseID != nil && *input.UniverseID > 0 {
+			if err := database.DB.Where("universe_id = ?", input.UniverseID).First(&robloxMap).Error; err == nil {
+				// Update if changed
+				hasChanged := false
+				if robloxMap.Name != input.Name {
+					robloxMap.Name = input.Name
+					hasChanged = true
+				}
+				if input.GlobalDesc != "" && robloxMap.Description != input.GlobalDesc {
+					robloxMap.Description = input.GlobalDesc
+					hasChanged = true
+				}
+				if input.UrlPath != "" && robloxMap.UrlPath != input.UrlPath {
+					robloxMap.UrlPath = input.UrlPath
+					hasChanged = true
+				}
+				if hasChanged {
+					robloxMap.UpdatedAt = time.Now()
+					database.DB.Save(&robloxMap)
+				}
+			} else {
+				// Not found by UniverseID. Search by name with no UniverseID
+				if err := database.DB.Where("name = ? AND (universe_id IS NULL OR universe_id = 0)", input.Name).First(&robloxMap).Error; err == nil {
+					robloxMap.UniverseID = input.UniverseID
+					robloxMap.PlaceID = input.PlaceID
+					if input.GlobalDesc != "" {
+						robloxMap.Description = input.GlobalDesc
+					}
+					if input.UrlPath != "" {
+						robloxMap.UrlPath = input.UrlPath
+					}
+					robloxMap.UpdatedAt = time.Now()
+					database.DB.Save(&robloxMap)
+				} else {
+					// Brand new
+					robloxMap = models.RobloxMap{
+						UniverseID:  input.UniverseID,
+						PlaceID:     input.PlaceID,
+						Name:        input.Name,
+						Description: input.GlobalDesc,
+						UrlPath:     input.UrlPath,
+						CreatedAt:   time.Now(),
+						UpdatedAt:   time.Now(),
+					}
+					database.DB.Create(&robloxMap)
+				}
+			}
+		} else {
+			// No UniverseID - Fallback to Name-only
+			if err := database.DB.Where("name = ?", input.Name).First(&robloxMap).Error; err != nil {
+				robloxMap = models.RobloxMap{
+					Name:      input.Name,
+					CreatedAt: time.Now(),
+					UpdatedAt: time.Now(),
+				}
+				database.DB.Create(&robloxMap)
+			}
+		}
+		entry.RobloxMapID = robloxMap.ID
 	}
 	entry.Description = input.Description
-	entry.RobloxLink = input.RobloxLink
 
 	if err := database.DB.Save(&entry).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update game entry"})
 	}
 
+	// Fetch fully loaded for response
+	database.DB.Preload("AddedBy").Preload("RobloxMap").First(&entry, entry.ID)
 	return c.JSON(entry)
 }
 

@@ -10,7 +10,15 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
   const [showAddModal, setShowAddModal] = useState(false);
   const [showInvitePanel, setShowInvitePanel] = useState(false);
   const [editEntry, setEditEntry] = useState(null);
-  const [form, setForm] = useState({ name: '', description: '', roblox_link: '' });
+  const [form, setForm] = useState({
+    name: '',
+    description: '',
+    roblox_link: '',
+    universe_id: null,
+    place_id: null,
+    global_description: '',
+    url_path: ''
+  });
   const [submitting, setSubmitting] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
@@ -19,6 +27,67 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
   const [showEditListModal, setShowEditListModal] = useState(false);
   const [listForm, setListForm] = useState({ name: '', description: '' });
   const [listSubmitting, setListSubmitting] = useState(false);
+
+  // States for Roblox Maps autocomplete
+  const [mapSuggestions, setMapSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  useEffect(() => {
+    if (!form.name.trim()) {
+      setMapSuggestions([]);
+      return;
+    }
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        // Fetch local database maps
+        const localPromise = fetchWithAuth(`/api/maps?search=${encodeURIComponent(form.name)}`)
+          .then(res => res.ok ? res.json() : []);
+
+        // Fetch online Roblox maps using proxy
+        const onlinePromise = fetchWithAuth(`/api/maps/search-roblox?query=${encodeURIComponent(form.name)}`)
+          .then(res => res.ok ? res.json() : []);
+
+        const [localData, onlineData] = await Promise.all([localPromise, onlinePromise]);
+
+        const merged = [];
+
+        // 1. Add local suggestions
+        localData.forEach(item => {
+          merged.push({
+            id: `local_${item.id}`,
+            name: item.name,
+            universe_id: item.universe_id,
+            place_id: item.place_id,
+            description: item.description,
+            url_path: item.url_path,
+            source: 'local'
+          });
+        });
+
+        // 2. Add online suggestions (avoid duplicate universeID)
+        onlineData.forEach(item => {
+          const isDuplicate = merged.some(m => m.universe_id && m.universe_id === item.universe_id);
+          if (!isDuplicate) {
+            merged.push({
+              id: `online_${item.universe_id}`,
+              name: item.name,
+              universe_id: item.universe_id,
+              place_id: item.root_place_id,
+              description: item.description,
+              url_path: item.url_path,
+              source: 'online'
+            });
+          }
+        });
+
+        setMapSuggestions(merged.slice(0, 10));
+      } catch (err) {
+        console.error('Gagal memuat saran map:', err);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [form.name]);
 
   const fetchList = async () => {
     setIsLoading(true);
@@ -70,7 +139,7 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
       if (!res.ok) throw new Error();
       showToast('Game berhasil ditambahkan! 🎮', 'success');
       setShowAddModal(false);
-      setForm({ name: '', description: '', roblox_link: '' });
+      setForm({ name: '', description: '', roblox_link: '', universe_id: null, place_id: null, global_description: '', url_path: '' });
       fetchList();
     } catch {
       showToast('Gagal menambahkan game.', 'error');
@@ -91,6 +160,8 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
       if (!res.ok) throw new Error();
       showToast('Game berhasil diupdate!', 'success');
       setEditEntry(null);
+      setForm({ name: '', description: '', roblox_link: '', universe_id: null, place_id: null, global_description: '', url_path: '' });
+      setShowAddModal(false);
       fetchList();
     } catch {
       showToast('Gagal mengupdate game.', 'error');
@@ -100,7 +171,7 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
   };
 
   const handleDeleteEntry = async (entry) => {
-    if (!confirm(`Hapus "${entry.name}" dari list ini?`)) return;
+    if (!confirm(`Hapus "${entry.roblox_map?.name || 'game ini'}" dari list ini?`)) return;
     try {
       const res = await fetchWithAuth(`/api/lists/${listId}/entries/${entry.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
@@ -237,7 +308,11 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
                 }}
               >🔗 Bagikan List</button>
               <button
-                onClick={() => { setEditEntry(null); setForm({ name: '', description: '', roblox_link: '' }); setShowAddModal(true); }}
+                onClick={() => { 
+                  setEditEntry(null); 
+                  setForm({ name: '', description: '', roblox_link: '', universe_id: null, place_id: null, global_description: '', url_path: '' }); 
+                  setShowAddModal(true); 
+                }}
                 style={{
                   padding: '0.6rem 1.1rem', borderRadius: '0.5rem', border: 'none',
                   background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
@@ -338,7 +413,19 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
                 key={entry.id}
                 entry={entry}
                 onToggleStatus={() => handleToggleStatus(entry)}
-                onEdit={() => { setEditEntry(entry); setForm({ name: entry.name, description: entry.description || '', roblox_link: entry.roblox_link || '' }); setShowAddModal(true); }}
+                onEdit={() => { 
+                  setEditEntry(entry); 
+                  setForm({ 
+                    name: entry.roblox_map?.name || '', 
+                    description: entry.description || '', 
+                    roblox_link: entry.roblox_map?.url_path ? `https://www.roblox.com${entry.roblox_map.url_path}` : '',
+                    universe_id: entry.roblox_map?.universe_id || null,
+                    place_id: entry.roblox_map?.place_id || null,
+                    global_description: entry.roblox_map?.description || '',
+                    url_path: entry.roblox_map?.url_path || ''
+                  }); 
+                  setShowAddModal(true); 
+                }}
                 onDelete={() => handleDeleteEntry(entry)}
                 onOpenGallery={() => onNavigateEntry(entry.id)}
               />
@@ -358,9 +445,77 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
             <form onSubmit={editEntry ? handleUpdateEntry : handleAddEntry} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Nama Game *</label>
-                <input style={inputStyle} placeholder="Contoh: Brookhaven 🏡RP" value={form.name}
-                  onChange={e => setForm(p => ({ ...p, name: e.target.value }))} required autoFocus
-                  onFocus={e => e.target.style.borderColor = '#3b82f6'} onBlur={e => e.target.style.borderColor = '#334155'} />
+                <div style={{ position: 'relative' }}>
+                  <input 
+                    style={inputStyle} 
+                    placeholder="Contoh: Brookhaven 🏡RP" 
+                    value={form.name}
+                    onChange={e => setForm(p => ({ ...p, name: e.target.value }))} 
+                    onFocus={() => setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                    required 
+                    autoFocus
+                  />
+                  {showSuggestions && mapSuggestions.length > 0 && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      background: '#1e293b',
+                      border: '1px solid #334155',
+                      borderRadius: '0.5rem',
+                      maxHeight: '180px',
+                      overflowY: 'auto',
+                      zIndex: 1000,
+                      marginTop: '0.25rem',
+                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)'
+                    }}>
+                      {mapSuggestions.map(map => (
+                        <div
+                          key={map.id}
+                          onClick={() => {
+                            setForm(p => ({
+                              ...p,
+                              name: map.name,
+                              universe_id: map.universe_id,
+                              place_id: map.place_id,
+                              global_description: map.description || '',
+                              url_path: map.url_path || '',
+                              roblox_link: map.url_path ? `https://www.roblox.com${map.url_path}` : ''
+                            }));
+                            setShowSuggestions(false);
+                          }}
+                          style={{
+                            padding: '0.6rem 1rem',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            color: '#f1f5f9',
+                            borderBottom: '1px solid rgba(255,255,255,0.03)',
+                            transition: 'background 0.2s',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#334155'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <span style={{ fontWeight: 500 }}>🎮 {map.name}</span>
+                          <span style={{
+                            fontSize: '0.65rem',
+                            padding: '0.15rem 0.4rem',
+                            borderRadius: '4px',
+                            background: map.source === 'local' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(139, 92, 246, 0.25)',
+                            color: map.source === 'local' ? '#60a5fa' : '#c084fc',
+                            border: `1px solid ${map.source === 'local' ? 'rgba(59,130,246,0.4)' : 'rgba(139,92,246,0.4)'}`
+                          }}>
+                            {map.source === 'local' ? '💾 Tersimpan' : '🌐 Online'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Deskripsi (opsional)</label>
@@ -452,15 +607,15 @@ function GameEntryCard({ entry, onToggleStatus, onEdit, onDelete, onOpenGallery 
 
       {/* Content */}
       <div>
-        <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.3rem' }}>{entry.name}</h3>
+        <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.3rem' }}>{entry.roblox_map?.name || 'Tidak Diketahui'}</h3>
         {entry.description && (
           <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.5,
             display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
             {entry.description}
           </p>
         )}
-        {entry.roblox_link && (
-          <a href={entry.roblox_link} target="_blank" rel="noopener noreferrer"
+        {entry.roblox_map?.url_path && (
+          <a href={`https://www.roblox.com${entry.roblox_map.url_path}`} target="_blank" rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
             style={{ fontSize: '0.78rem', color: '#60a5fa', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.4rem' }}>
             🔗 Buka di Roblox

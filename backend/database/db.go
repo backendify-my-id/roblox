@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/apany/roblox-friend-tracker/models"
@@ -91,6 +92,7 @@ func ConnectDB() {
 		&models.ActivityLog{},
 		&models.ProfileChangeLog{},
 		&models.ShadowActivity{},
+		&models.RobloxMap{},
 		&models.GameList{},
 		&models.GameListMember{},
 		&models.GameEntry{},
@@ -101,6 +103,9 @@ func ConnectDB() {
 		log.Fatal("Failed to auto migrate database schemas: ", err)
 	}
 	log.Println("Database schemas auto migrated")
+
+	// Custom data migration to normalize legacy game_entries name/roblox_link to RobloxMap
+	migrateGameEntriesToRobloxMap(DB)
 
 	seedRolesAndPermissions(DB)
 	// backfillShadowActivities(DB)
@@ -236,4 +241,74 @@ func seedRolesAndPermissions(db *gorm.DB) {
 			db.Model(&role).Association("Permissions").Replace(permissions)
 		}
 	}
+}
+
+func migrateGameEntriesToRobloxMap(db *gorm.DB) {
+	// 1. Check if "name" column exists in "game_entries"
+	if !db.Migrator().HasColumn(&models.GameEntry{}, "name") {
+		// Migration already done previously
+		return
+	}
+
+	log.Println("Running legacy game_entries data migration to RobloxMap...")
+
+	// We temporarily need to load name and roblox_link. Since the struct model doesn't have them anymore,
+	// we can query them dynamically using raw SQL!
+	type LegacyEntry struct {
+		ID         uint
+		Name       string
+		RobloxLink string
+	}
+
+	var legacyEntries []LegacyEntry
+	if err := db.Raw("SELECT id, name, roblox_link FROM game_entries").Scan(&legacyEntries).Error; err != nil {
+		log.Println("Error reading legacy game_entries: ", err)
+		return
+	}
+
+	for _, le := range legacyEntries {
+		if le.Name == "" {
+			continue
+		}
+
+		// Find or create RobloxMap
+		var robloxMap models.RobloxMap
+		if err := db.Where("name = ?", le.Name).First(&robloxMap).Error; err != nil {
+			// Try to parse URL path from roblox_link
+			urlPath := ""
+			if strings.Contains(le.RobloxLink, "roblox.com") {
+				parts := strings.Split(le.RobloxLink, "roblox.com")
+				if len(parts) > 1 {
+					urlPath = parts[1]
+				}
+			}
+
+			robloxMap = models.RobloxMap{
+				Name:      le.Name,
+				UrlPath:   urlPath,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			}
+			if err := db.Create(&robloxMap).Error; err != nil {
+				log.Printf("Error creating RobloxMap for legacy entry %d: %v", le.ID, err)
+				continue
+			}
+		}
+
+		// Update game_entry RobloxMapID
+		if err := db.Exec("UPDATE game_entries SET roblox_map_id = ? WHERE id = ?", robloxMap.ID, le.ID).Error; err != nil {
+			log.Printf("Error updating roblox_map_id on game_entry %d: %v", le.ID, err)
+		}
+	}
+
+	// 2. Safely drop the legacy columns name and roblox_link
+	log.Println("Dropping legacy columns 'name' and 'roblox_link' from game_entries...")
+	if err := db.Migrator().DropColumn(&models.GameEntry{}, "name"); err != nil {
+		log.Println("Warning: failed to drop column 'name':", err)
+	}
+	if err := db.Migrator().DropColumn(&models.GameEntry{}, "roblox_link"); err != nil {
+		log.Println("Warning: failed to drop column 'roblox_link':", err)
+	}
+
+	log.Println("game_entries database normalization successfully completed!")
 }

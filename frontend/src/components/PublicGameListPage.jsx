@@ -195,7 +195,7 @@ export default function PublicGameListPage({ shareToken, onBack }) {
               <button className="modal-close" onClick={() => setViewingReviews(null)}>×</button>
             </div>
             
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '1rem', color: '#f8fafc' }}>{viewingReviews.name}</h3>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '1rem', color: '#f8fafc' }}>{viewingReviews.roblox_map?.name || 'Tidak Diketahui'}</h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {(viewingReviews.reviews || []).length === 0 ? (
@@ -257,10 +257,10 @@ function PublicEntryCard({ entry, onOpenMedia, onOpenReviews }) {
 
       {/* Main Info */}
       <div>
-        <h3 style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.3rem' }}>{entry.name}</h3>
+        <h3 style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.3rem' }}>{entry.roblox_map?.name || 'Tidak Diketahui'}</h3>
         {entry.description && <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.4 }}>{entry.description}</p>}
-        {entry.roblox_link && (
-          <a href={entry.roblox_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.78rem', color: '#60a5fa', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.4rem' }}>
+        {entry.roblox_map?.url_path && (
+          <a href={`https://www.roblox.com${entry.roblox_map.url_path}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.78rem', color: '#60a5fa', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.4rem' }}>
             🔗 Buka di Roblox
           </a>
         )}

@@ -7,8 +7,11 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // --- Types ---
@@ -39,9 +42,12 @@ type AvatarResponse struct {
 }
 
 type PresenceData struct {
-	UserId           uint64 `json:"userId"`
-	UserPresenceType int    `json:"userPresenceType"` // 0: Offline, 1: Online, 2: InGame, 3: InStudio, 4: Invisible
-	LastLocation     string `json:"lastLocation"`
+	UserId           uint64  `json:"userId"`
+	UserPresenceType int     `json:"userPresenceType"` // 0: Offline, 1: Online, 2: InGame, 3: InStudio, 4: Invisible
+	LastLocation     string  `json:"lastLocation"`
+	PlaceId          *uint64 `json:"placeId,omitempty"`
+	UniverseId       *uint64 `json:"universeId,omitempty"`
+	GameId           string  `json:"gameId,omitempty"`
 }
 
 type PresenceResponse struct {
@@ -241,3 +247,100 @@ func GetPresences(userIds []uint64) (map[uint64]PresenceData, error) {
 
 	return presenceMap, nil
 }
+
+type OmniSearchResult struct {
+	UniverseID  uint64 `json:"universe_id"`
+	RootPlaceID uint64 `json:"root_place_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	UrlPath     string `json:"url_path"`
+}
+
+type OmniSearchResponse struct {
+	SearchResults []struct {
+		ContentGroupType string `json:"contentGroupType"`
+		Contents         []struct {
+			UniverseId       uint64 `json:"universeId"`
+			Name             string `json:"name"`
+			Description      string `json:"description"`
+			RootPlaceId      uint64 `json:"rootPlaceId"`
+			CanonicalUrlPath string `json:"canonicalUrlPath"`
+			ContentType      string `json:"contentType"`
+		} `json:"contents"`
+	} `json:"searchResults"`
+}
+
+func SearchRobloxGames(searchQuery string) ([]OmniSearchResult, error) {
+	sessionID := uuid.New().String()
+	encodedQuery := url.QueryEscape(searchQuery)
+	targetURL := fmt.Sprintf("https://apis.roblox.com/search-api/omni-search?searchQuery=%s&sessionId=%s&pageType=all", encodedQuery, sessionID)
+
+	waitForRateLimit()
+	resp, err := http.Get(targetURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("omni-search returned status: %d", resp.StatusCode)
+	}
+
+	var res OmniSearchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+
+	var results []OmniSearchResult
+	for _, r := range res.SearchResults {
+		for _, c := range r.Contents {
+			if c.ContentType == "Game" || r.ContentGroupType == "Game" {
+				results = append(results, OmniSearchResult{
+					UniverseID:  c.UniverseId,
+					RootPlaceID: c.RootPlaceId,
+					Name:        c.Name,
+					Description: c.Description,
+					UrlPath:     c.CanonicalUrlPath,
+				})
+			}
+		}
+	}
+
+	return results, nil
+}
+
+type UniverseDetailsResponse struct {
+	Data []struct {
+		ID          uint64 `json:"id"`
+		RootPlaceId uint64 `json:"rootPlaceId"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	} `json:"data"`
+}
+
+func GetUniverseDetails(universeID uint64) (string, string, uint64, error) {
+	targetURL := fmt.Sprintf("https://games.roblox.com/v1/games?universeIds=%d", universeID)
+
+	waitForRateLimit()
+	resp, err := http.Get(targetURL)
+	if err != nil {
+		return "", "", 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return "", "", 0, fmt.Errorf("games-api returned status: %d", resp.StatusCode)
+	}
+
+	var res UniverseDetailsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return "", "", 0, err
+	}
+
+	if len(res.Data) == 0 {
+		return "", "", 0, fmt.Errorf("no details found for universe: %d", universeID)
+	}
+
+	return res.Data[0].Name, res.Data[0].Description, res.Data[0].RootPlaceId, nil
+}
+

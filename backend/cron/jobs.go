@@ -185,6 +185,119 @@ func syncAllPresences() {
 				}
 				database.DB.Create(&newLog)
 				log.Printf("[Activity] %s is now %s (%s)\n", f.TargetUser.RobloxUsername, statusStr, p.LastLocation)
+
+				// Auto-create or update map in database if the target is In-Game
+				if statusStr == "In-Game" && p.LastLocation != "" && p.LastLocation != "-" {
+					if p.UniverseId != nil && *p.UniverseId > 0 {
+						var existingMap models.RobloxMap
+						if err := database.DB.Where("universe_id = ?", p.UniverseId).First(&existingMap).Error; err == nil {
+							// Exists! Check if the name has changed or description/url_path are empty
+							hasChanges := false
+							if existingMap.Name != p.LastLocation {
+								oldName := existingMap.Name
+								existingMap.Name = p.LastLocation
+								hasChanges = true
+								log.Printf("[AutoMap] Updated map name for UniverseID %d: %s -> %s\n", *p.UniverseId, oldName, p.LastLocation)
+							}
+							if existingMap.Description == "" || existingMap.UrlPath == "" {
+								gName, gDesc, gRootPlaceID, err := services.GetUniverseDetails(*p.UniverseId)
+								if err == nil {
+									if existingMap.Description == "" {
+										existingMap.Description = gDesc
+										hasChanges = true
+									}
+									if existingMap.UrlPath == "" {
+										existingMap.UrlPath = fmt.Sprintf("/games/%d/redirect", gRootPlaceID)
+										hasChanges = true
+									}
+									if (existingMap.PlaceID == nil || *existingMap.PlaceID == 0) && gRootPlaceID > 0 {
+										existingMap.PlaceID = &gRootPlaceID
+										hasChanges = true
+									}
+									if gName != "" && existingMap.Name != gName {
+										existingMap.Name = gName
+										hasChanges = true
+									}
+								} else {
+									log.Printf("[AutoMap] Failed to fetch details for UniverseID %d: %v\n", *p.UniverseId, err)
+								}
+							}
+							if hasChanges {
+								existingMap.UpdatedAt = time.Now()
+								database.DB.Save(&existingMap)
+							}
+						} else {
+							// Does not exist by UniverseID. Check if there is an existing manual entry with the same name and NO UniverseID
+							var nameMap models.RobloxMap
+							if err := database.DB.Where("name = ? AND (universe_id IS NULL OR universe_id = 0)", p.LastLocation).First(&nameMap).Error; err == nil {
+								// Match by name! Link the UniverseID and PlaceID to it, and fetch details
+								gName, gDesc, gRootPlaceID, err := services.GetUniverseDetails(*p.UniverseId)
+								urlPath := ""
+								var resolvedPlaceID *uint64 = p.PlaceId
+								if err == nil {
+									urlPath = fmt.Sprintf("/games/%d/redirect", gRootPlaceID)
+									if resolvedPlaceID == nil || *resolvedPlaceID == 0 {
+										resolvedPlaceID = &gRootPlaceID
+									}
+									if gName != "" {
+										p.LastLocation = gName
+									}
+									nameMap.Description = gDesc
+									nameMap.UrlPath = urlPath
+								} else {
+									log.Printf("[AutoMap] Failed to fetch details for UniverseID %d: %v\n", *p.UniverseId, err)
+								}
+								nameMap.UniverseID = p.UniverseId
+								nameMap.PlaceID = resolvedPlaceID
+								nameMap.UpdatedAt = time.Now()
+								database.DB.Save(&nameMap)
+								log.Printf("[AutoMap] Linked UniverseID %d and PlaceID %d to manual map: %s\n", *p.UniverseId, *resolvedPlaceID, p.LastLocation)
+							} else {
+								// Brand new map! Fetch details first
+								gName, gDesc, gRootPlaceID, err := services.GetUniverseDetails(*p.UniverseId)
+								urlPath := ""
+								var resolvedPlaceID *uint64 = p.PlaceId
+								if err == nil {
+									urlPath = fmt.Sprintf("/games/%d/redirect", gRootPlaceID)
+									if resolvedPlaceID == nil || *resolvedPlaceID == 0 {
+										resolvedPlaceID = &gRootPlaceID
+									}
+									if gName != "" {
+										p.LastLocation = gName
+									}
+								} else {
+									log.Printf("[AutoMap] Failed to fetch details for new UniverseID %d: %v\n", *p.UniverseId, err)
+								}
+
+								newMap := models.RobloxMap{
+									Name:        p.LastLocation,
+									UniverseID:  p.UniverseId,
+									PlaceID:     resolvedPlaceID,
+									Description: gDesc,
+									UrlPath:     urlPath,
+									CreatedAt:   time.Now(),
+									UpdatedAt:   time.Now(),
+								}
+								if err := database.DB.Create(&newMap).Error; err == nil {
+									log.Printf("[AutoMap] Added brand new map with UniverseID %d: %s\n", *p.UniverseId, p.LastLocation)
+								}
+							}
+						}
+					} else {
+						// Fallback: Name-only check if UniverseId is missing
+						var existingMap models.RobloxMap
+						if err := database.DB.Where("name = ?", p.LastLocation).First(&existingMap).Error; err != nil {
+							newMap := models.RobloxMap{
+								Name:      p.LastLocation,
+								CreatedAt: time.Now(),
+								UpdatedAt: time.Now(),
+							}
+							if err := database.DB.Create(&newMap).Error; err == nil {
+								log.Printf("[AutoMap] Added new map (fallback) to database: %s\n", p.LastLocation)
+							}
+						}
+					}
+				}
 				
 				updatedUserIDs[f.TargetUser.ID] = true
 			}
