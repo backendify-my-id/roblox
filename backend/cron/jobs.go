@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/apany/roblox-friend-tracker/cache"
@@ -12,12 +11,6 @@ import (
 	"github.com/apany/roblox-friend-tracker/models"
 	"github.com/apany/roblox-friend-tracker/services"
 	"github.com/robfig/cron/v3"
-)
-
-// Guards to prevent overlapping sync jobs
-var (
-	friendsSyncRunning  sync.Mutex
-	presenceSyncRunning sync.Mutex
 )
 
 func StartJobs() {
@@ -34,11 +27,18 @@ func StartJobs() {
 }
 
 func syncAllFriends() {
-	if !friendsSyncRunning.TryLock() {
-		log.Println("[FriendsSync] Skipped: previous sync still running")
+	lockKey := "lock:friends_sync"
+	// Try to acquire lock with 14 minutes expiration (since job runs every 15 mins)
+	acquired, err := cache.RDB.SetNX(cache.Ctx, lockKey, "locked", 14*time.Minute).Result()
+	if err != nil {
+		log.Println("[FriendsSync] Error acquiring Redis lock:", err)
 		return
 	}
-	defer friendsSyncRunning.Unlock()
+	if !acquired {
+		log.Println("[FriendsSync] Skipped: another instance is running the sync")
+		return
+	}
+	defer cache.RDB.Del(cache.Ctx, lockKey)
 
 	log.Println("Starting 15-minute friends & profile sync...")
 	var users []models.User
@@ -68,11 +68,18 @@ func syncAllFriends() {
 }
 
 func syncAllPresences() {
-	if !presenceSyncRunning.TryLock() {
-		log.Println("[PresenceSync] Skipped: previous sync still running")
+	lockKey := "lock:presence_sync"
+	// Try to acquire lock with 4 minutes expiration (since job runs every 5 mins)
+	acquired, err := cache.RDB.SetNX(cache.Ctx, lockKey, "locked", 4*time.Minute).Result()
+	if err != nil {
+		log.Println("[PresenceSync] Error acquiring Redis lock:", err)
 		return
 	}
-	defer presenceSyncRunning.Unlock()
+	if !acquired {
+		log.Println("[PresenceSync] Skipped: another instance is running the sync")
+		return
+	}
+	defer cache.RDB.Del(cache.Ctx, lockKey)
 
 	log.Println("Starting 5-minute presence sync...")
 	var friends []models.Friend
