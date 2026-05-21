@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/apany/roblox-friend-tracker/cache"
@@ -31,7 +32,25 @@ func GetFriends(c *fiber.Ctx) error {
 	}
 
 	if presenceFilter := c.Query("presence"); presenceFilter != "" {
-		query = query.Where("target_user.current_presence = ?", presenceFilter)
+		if presenceFilter != "Offline" {
+			// Untuk filter non-Offline: jangan tampilkan stealth user
+			// kecuali jika user yang login ada di daftar exemption stealth user tersebut
+			query = query.Where(
+				"target_user.current_presence = ? AND (target_user.is_stealth = false OR EXISTS ("+
+					"SELECT 1 FROM stealth_exemptions se WHERE se.user_id = target_user.id AND se.exempt_id = ?"+
+					"))",
+				presenceFilter, userId,
+			)
+		} else {
+			// Untuk filter Offline: tampilkan user offline biasa
+			// ditambah stealth user yang TIDAK dikecualikan (karena efektif presence mereka = Offline)
+			query = query.Where(
+				"target_user.current_presence = ? OR (target_user.is_stealth = true AND NOT EXISTS ("+
+					"SELECT 1 FROM stealth_exemptions se WHERE se.user_id = target_user.id AND se.exempt_id = ?"+
+					"))",
+				presenceFilter, userId,
+			)
+		}
 	}
 
 	if searchFilter := c.Query("search"); searchFilter != "" {
@@ -240,10 +259,65 @@ func GetProfileChangeLogs(c *fiber.Ctx) error {
 	}
 
 	var logs []models.ProfileChangeLog
-	query := database.DB.Where("user_id = ? AND owner_id = ?", friend.FriendID, userId)
+
+	// Bangun rentang waktu aktif berdasarkan event First Added, Added Again, dan Removed
+	// agar profile changes saat periode "Removed" tidak ikut tampil.
+	type FriendEvent struct {
+		Status    string
+		CreatedAt time.Time
+	}
+	var events []FriendEvent
+	database.DB.Model(&models.ActivityLog{}).
+		Select("status, created_at").
+		Where("user_id = ? AND owner_id = ? AND status IN ?",
+			friend.FriendID, userId, []string{"First Added", "Added Again", "Removed"}).
+		Order("created_at asc").
+		Scan(&events)
+
+	type DateRange struct {
+		Start time.Time
+		End   *time.Time
+	}
+	var activeRanges []DateRange
+	var currentStart *time.Time
+	for _, e := range events {
+		switch e.Status {
+		case "First Added", "Added Again":
+			t := e.CreatedAt
+			currentStart = &t
+		case "Removed":
+			if currentStart != nil {
+				t := e.CreatedAt
+				activeRanges = append(activeRanges, DateRange{Start: *currentStart, End: &t})
+				currentStart = nil
+			}
+		}
+	}
+	if currentStart != nil {
+		// Masih aktif saat ini
+		activeRanges = append(activeRanges, DateRange{Start: *currentStart, End: nil})
+	}
+
+	if len(activeRanges) == 0 {
+		return c.JSON([]models.ProfileChangeLog{})
+	}
+
+	// Bangun klausa OR untuk setiap rentang aktif
+	conditions := make([]string, 0, len(activeRanges))
+	args := make([]interface{}, 0)
+	for _, r := range activeRanges {
+		if r.End != nil {
+			conditions = append(conditions, "(user_id = ? AND created_at >= ? AND created_at < ?)")
+			args = append(args, friend.FriendID, r.Start, *r.End)
+		} else {
+			conditions = append(conditions, "(user_id = ? AND created_at >= ?)")
+			args = append(args, friend.FriendID, r.Start)
+		}
+	}
+
+	query := database.DB.Where(strings.Join(conditions, " OR "), args...)
 
 	if !isExempted {
-		// Non-exempt user: Sembunyikan semua log profil yang dibuat saat mode siluman aktif
 		query = query.Where("is_stealth = ?", false)
 	}
 

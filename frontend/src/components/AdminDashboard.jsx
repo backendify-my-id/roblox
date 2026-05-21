@@ -739,6 +739,7 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
                     <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>ID</th>
                     <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Profil</th>
                     <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Tipe Akun</th>
+                    <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Persetujuan</th>
                     <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Status Kehadiran</th>
                     <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Mode Siluman</th>
                     <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>Total Teman</th>
@@ -748,7 +749,7 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
                 <tbody>
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Tidak ada data ditemukan</td>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Tidak ada data ditemukan</td>
                     </tr>
                   ) : (
                     filteredUsers.map(u => (
@@ -818,6 +819,46 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
                              }}>
                                {u.role_name}
                              </span>
+                           )}
+                         </td>
+                         <td style={{ padding: '1rem' }} onClick={e => e.stopPropagation()}>
+                           {u.is_registered ? (
+                             u.role_name === 'admin' ? (
+                               <span style={{ fontSize: '0.82rem', color: '#34d399', fontWeight: 700 }}>✅ Auto-Approved</span>
+                             ) : (
+                               <button
+                                 onClick={async () => {
+                                   const nextVal = !u.is_approved;
+                                   try {
+                                     const res = await fetchWithAuth(`/api/admin/users/${u.id}/approve`, {
+                                       method: 'PUT',
+                                       headers: { 'Content-Type': 'application/json' },
+                                       body: JSON.stringify({ is_approved: nextVal })
+                                     });
+                                     if (!res.ok) throw new Error('Gagal mengubah status persetujuan');
+                                     showToast(`Persetujuan @${u.roblox_username} berhasil ${nextVal ? 'disetujui' : 'ditangguhkan'}`, 'success');
+                                     setUsers(prev => prev.map(usr => usr.id === u.id ? { ...usr, is_approved: nextVal } : usr));
+                                   } catch (err) {
+                                     showToast(err.message, 'error');
+                                   }
+                                 }}
+                                 style={{
+                                   padding: '0.25rem 0.6rem',
+                                   borderRadius: '0.4rem',
+                                   fontSize: '0.8rem',
+                                   cursor: 'pointer',
+                                   fontWeight: 'bold',
+                                   border: 'none',
+                                   background: u.is_approved ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                                   color: u.is_approved ? '#34d399' : '#f87171',
+                                   transition: 'all 0.2s'
+                                 }}
+                               >
+                                 {u.is_approved ? '✅ Disetujui' : '⏳ Pending'}
+                               </button>
+                             )
+                           ) : (
+                             <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>-</span>
                            )}
                          </td>
                         <td style={{ padding: '1rem' }}>

@@ -67,6 +67,17 @@ func Register(c *fiber.Ctx) error {
 	var role models.Role
 	database.DB.Where("name = ?", "user").First(&role)
 
+	// Count existing registered users to determine approval.
+	// The very first registered user will be automatically approved as Admin.
+	// All subsequent users require manual approval.
+	var registeredCount int64
+	database.DB.Model(&models.User{}).Where("password_hash != ''").Count(&registeredCount)
+	isApproved := false
+	if registeredCount == 0 {
+		database.DB.Where("name = ?", "admin").First(&role)
+		isApproved = true
+	}
+
 	if existingUser.ID != 0 {
 		// User exists but was just a synced friend (no role/password).
 		// We upgrade them to a full user.
@@ -75,6 +86,7 @@ func Register(c *fiber.Ctx) error {
 		existingUser.PasswordHash = string(hashedPassword)
 		existingUser.AvatarURL = avatarUrl
 		existingUser.RoleID = &role.ID
+		existingUser.IsApproved = isApproved
 
 		if err := database.DB.Save(&existingUser).Error; err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to upgrade user account"})
@@ -89,6 +101,7 @@ func Register(c *fiber.Ctx) error {
 			AvatarURL:         avatarUrl,
 			CreatedAt:         time.Now(),
 			RoleID:            &role.ID,
+			IsApproved:        isApproved,
 		}
 
 		if err := database.DB.Create(&user).Error; err != nil {
@@ -112,6 +125,10 @@ func Login(c *fiber.Ctx) error {
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
+	}
+
+	if !user.IsApproved {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Pendaftaran Anda sedang menunggu persetujuan admin. Silakan hubungi admin."})
 	}
 
 	// Generate JWT

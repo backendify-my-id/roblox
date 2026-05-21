@@ -23,6 +23,7 @@ type User struct {
 	RoleID            *uint     `json:"role_id"` // Pakai pointer (*) agar nullable untuk teman hasil sync
 	Role              Role      `gorm:"foreignKey:RoleID" json:"role"`
 	IsStealth         bool      `gorm:"default:false" json:"is_stealth"`
+	IsApproved        bool      `gorm:"default:false" json:"is_approved"`
 	AdminNote         string    `gorm:"type:text" json:"admin_note"`
 
 	// Pengguna yang dikecualikan dari Mode Siluman (bisa melihat status asli kita)

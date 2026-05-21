@@ -7,6 +7,10 @@ import ProfileChangeModal from './components/ProfileChangeModal';
 import SettingsModal from './components/SettingsModal';
 import AdminDashboard from './components/AdminDashboard';
 import MyProfileModal from './components/MyProfileModal';
+import GameListsPage from './components/GameListsPage';
+import GameListDetailPage from './components/GameListDetailPage';
+import GameEntryDetailPage from './components/GameEntryDetailPage';
+import PublicGameListPage from './components/PublicGameListPage';
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 function Dashboard({ user, showToast }) {
@@ -95,11 +99,11 @@ function Dashboard({ user, showToast }) {
     <div className="app-container">
       <div className="header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
         <div>
-          <h1 style={{ background: 'linear-gradient(to right, #60a5fa, #a78bfa)', WebkitBackgroundClip: 'text', color: 'transparent', fontSize: '2.5rem', margin: 0 }}>
-            Roblox Friends Tracker
+          <h1 style={{ background: 'linear-gradient(to right, #ec4899, #8b5cf6)', WebkitBackgroundClip: 'text', color: 'transparent', fontSize: '2.5rem', margin: 0, fontWeight: 800 }}>
+            ✨ Roblox Co-Play & Memory Capsule 💖
           </h1>
           <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-            Pantau aktivitas teman Roblox Anda secara otomatis.
+            Kapsul waktu kenangan & bucket list petualangan Roblox bersama orang-orang tersayang! 🚀
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--bg-card)', padding: '0.75rem 1.5rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
@@ -291,7 +295,24 @@ function App() {
     try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
   });
   const [toast, setToast] = useState(null);
-  const [currentView, setCurrentView] = useState('dashboard');
+  const [currentView, setCurrentView] = useState('gameLists');
+  const [activeListId, setActiveListId] = useState(null);
+  const [activeEntryId, setActiveEntryId] = useState(null);
+
+  // Parse path for public view-only sharing link
+  const [publicShareToken, setPublicShareToken] = useState(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/public/')) {
+      return path.split('/public/')[1];
+    }
+    return null;
+  });
+
+  const navigateTo = (view, listId = null, entryId = null) => {
+    setCurrentView(view);
+    setActiveListId(listId);
+    setActiveEntryId(entryId);
+  };
 
   const showToastMsg = (message, type = 'success') => {
     setToast({ message, type });
@@ -322,7 +343,7 @@ function App() {
     localStorage.removeItem('user');
     setToken(null);
     setUser(null);
-    setCurrentView('dashboard');
+    navigateTo('gameLists');
     showToastMsg('Anda telah berhasil keluar.', 'success');
   };
 
@@ -331,6 +352,27 @@ function App() {
     user.permissions.includes('view_playing_together') ||
     user.permissions.includes('view_shadow_activities')
   )));
+
+  // Render public page if share link accessed
+  if (publicShareToken) {
+    return (
+      <>
+        <PublicGameListPage
+          shareToken={publicShareToken}
+          onBack={() => {
+            window.history.pushState({}, '', '/');
+            setPublicShareToken(null);
+          }}
+        />
+        {toast && (
+          <div className={`toast toast-${toast.type}`}>
+            <span>{toast.type === 'success' ? '✅' : '❌'}</span>
+            <span>{toast.message}</span>
+          </div>
+        )}
+      </>
+    );
+  }
 
   if (!token || !user) {
     return (
@@ -348,22 +390,110 @@ function App() {
 
   return (
     <>
-      <div style={{ position: 'absolute', top: '1rem', right: '1rem', zIndex: 100, display: 'flex', gap: '0.5rem' }}>
-        {hasAdminPanelAccess && currentView === 'dashboard' && (
-          <button 
-            onClick={() => setCurrentView('admin')} 
-            style={{ padding: '0.4rem 1rem', borderRadius: '0.5rem', background: '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer' }}
+      <nav style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '1.25rem 2rem',
+        background: 'rgba(20, 27, 45, 0.7)',
+        backdropFilter: 'blur(16px)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+        marginBottom: '1rem',
+        fontFamily: "'Outfit', sans-serif"
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer' }} onClick={() => navigateTo('gameLists')}>
+          <span style={{ fontSize: '1.5rem' }}>✨</span>
+          <span style={{ fontWeight: 800, fontSize: '1.25rem', background: 'linear-gradient(to right, #ec4899, #8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.02em' }}>
+            Co-Play Capsule
+          </span>
+        </div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            onClick={() => navigateTo('gameLists')}
+            style={{
+              padding: '0.5rem 1rem', borderRadius: '0.75rem', border: 'none',
+              background: currentView === 'gameLists' || currentView === 'listDetail' || currentView === 'entryDetail' ? 'linear-gradient(135deg, #ec4899, #8b5cf6)' : 'transparent',
+              color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem',
+              boxShadow: currentView === 'gameLists' || currentView === 'listDetail' || currentView === 'entryDetail' ? '0 4px 10px rgba(236,72,153,0.2)' : 'none',
+              transition: 'all 0.2s'
+            }}
           >
-            Admin Panel
+            🎮 Game Lists
           </button>
-        )}
-        <button onClick={handleLogout} style={{ padding: '0.4rem 1rem', borderRadius: '0.5rem', background: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer' }}>Logout</button>
-      </div>
+          <button
+            onClick={() => navigateTo('dashboard')}
+            style={{
+              padding: '0.5rem 1rem', borderRadius: '0.75rem', border: 'none',
+              background: currentView === 'dashboard' ? 'linear-gradient(135deg, #ec4899, #8b5cf6)' : 'transparent',
+              color: currentView === 'dashboard' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem',
+              boxShadow: currentView === 'dashboard' ? '0 4px 10px rgba(236,72,153,0.2)' : 'none',
+              transition: 'all 0.2s'
+            }}
+            onMouseOver={e => { if (currentView !== 'dashboard') e.currentTarget.style.color = '#fff'; }}
+            onMouseOut={e => { if (currentView !== 'dashboard') e.currentTarget.style.color = 'var(--text-muted)'; }}
+          >
+            📡 Live Status
+          </button>
+          {hasAdminPanelAccess && (
+            <button
+              onClick={() => navigateTo('admin')}
+              style={{
+                padding: '0.5rem 1rem', borderRadius: '0.75rem', border: 'none',
+                background: currentView === 'admin' ? '#3b82f6' : 'transparent',
+                color: currentView === 'admin' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={e => { if (currentView !== 'admin') e.currentTarget.style.color = '#fff'; }}
+              onMouseOut={e => { if (currentView !== 'admin') e.currentTarget.style.color = 'var(--text-muted)'; }}
+            >
+              🔑 Admin
+            </button>
+          )}
+          <button
+            onClick={handleLogout}
+            style={{
+              padding: '0.5rem 1rem', borderRadius: '0.75rem', border: '1px solid rgba(239, 68, 68, 0.4)',
+              background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem',
+              transition: 'all 0.2s', marginLeft: '0.5rem'
+            }}
+            onMouseOver={e => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'; }}
+            onMouseOut={e => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; }}
+          >
+            🚪 Keluar
+          </button>
+        </div>
+      </nav>
 
-      {currentView === 'dashboard' ? (
-        <Dashboard user={user} showToast={showToastMsg} />
-      ) : (
-        <AdminDashboard user={user} showToast={showToastMsg} onBack={() => setCurrentView('dashboard')} />
+      {currentView === 'dashboard' && <Dashboard user={user} showToast={showToastMsg} />}
+      {currentView === 'admin' && <AdminDashboard user={user} showToast={showToastMsg} onBack={() => navigateTo('gameLists')} />}
+      {currentView === 'gameLists' && (
+        <GameListsPage
+          user={user}
+          showToast={showToastMsg}
+          onNavigate={(view, id) => navigateTo('listDetail', id)}
+        />
+      )}
+      {currentView === 'listDetail' && activeListId && (
+        <GameListDetailPage
+          listId={activeListId}
+          user={user}
+          showToast={showToastMsg}
+          onBack={() => navigateTo('gameLists')}
+          onNavigateEntry={(entryId) => navigateTo('entryDetail', activeListId, entryId)}
+        />
+      )}
+      {currentView === 'entryDetail' && activeListId && activeEntryId && (
+        <GameEntryDetailPage
+          listId={activeListId}
+          entryId={activeEntryId}
+          user={user}
+          showToast={showToastMsg}
+          onBack={() => navigateTo('listDetail', activeListId)}
+        />
       )}
 
       {toast && (

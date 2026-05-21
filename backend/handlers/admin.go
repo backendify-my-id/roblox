@@ -31,6 +31,7 @@ func GetAllUsers(c *fiber.Ctx) error {
 		CurrentPresence   string    `json:"current_presence"`
 		CurrentGameName   string    `json:"current_game_name"`
 		IsStealth         bool      `json:"is_stealth"`
+		IsApproved        bool      `json:"is_approved"`
 		RoleName          string    `json:"role_name"`
 		IsRegistered      bool      `json:"is_registered"`
 		FriendsCount      int       `json:"friends_count"`
@@ -58,6 +59,7 @@ func GetAllUsers(c *fiber.Ctx) error {
 			CurrentPresence:   u.CurrentPresence,
 			CurrentGameName:   u.CurrentGameName,
 			IsStealth:         u.IsStealth,
+			IsApproved:        u.IsApproved,
 			RoleName:          roleName,
 			IsRegistered:      isRegistered,
 			FriendsCount:      len(u.Friends),
@@ -67,6 +69,35 @@ func GetAllUsers(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(res)
+}
+
+func ApproveUser(c *fiber.Ctx) error {
+	userId := c.Params("id")
+
+	type ApproveRequest struct {
+		IsApproved bool `json:"is_approved"`
+	}
+
+	req := new(ApproveRequest)
+	if err := c.BodyParser(req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	var user models.User
+	if err := database.DB.First(&user, userId).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	user.IsApproved = req.IsApproved
+	if err := database.DB.Save(&user).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update user approval status"})
+	}
+
+	statusMsg := "disetujui"
+	if !req.IsApproved {
+		statusMsg = "ditolak/ditangguhkan"
+	}
+	return c.JSON(fiber.Map{"message": "User berhasil " + statusMsg})
 }
 
 func GetUserActivityLogs(c *fiber.Ctx) error {
@@ -253,10 +284,16 @@ func BackupDatabase(c *fiber.Ctx) error {
 
 func GetPlayingTogether(c *fiber.Ctx) error {
 	scopeFriendsOnly, _ := c.Locals("scope_friends_only").(bool)
+	roleName, _ := c.Locals("role").(string)
 
 	users := make([]models.User, 0)
 	query := database.DB.Preload("Role").
 		Where("current_presence = ? AND current_game_name IS NOT NULL AND current_game_name != ? AND current_game_name != ?", "In-Game", "", "-")
+
+	// Non-admin (Moderator/Observer) tidak boleh melihat user yang mode siluman aktif
+	if roleName != "admin" {
+		query = query.Where("is_stealth = ?", false)
+	}
 
 	if scopeFriendsOnly {
 		// Hanya tampilkan teman dari user yang sedang login

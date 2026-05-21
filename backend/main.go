@@ -60,12 +60,16 @@ func main() {
 		},
 	}))
 
+	// Static files for uploads
+	app.Static("/uploads", "./uploads")
+
 	api := app.Group("/api")
 
 	// Public Routes
 	api.Post("/auth/register", handlers.Register)
 	api.Post("/auth/login", handlers.Login)
 	api.Post("/auth/logout", middleware.Protected(), handlers.Logout)
+	api.Get("/public/lists/:shareToken", handlers.GetPublicGameList)
 
 	// Protected Routes
 	api.Use(middleware.Protected())
@@ -83,8 +87,35 @@ func main() {
 	api.Get("/user/logs", handlers.GetMyActivityLogs)
 	api.Get("/user/profile-changes", handlers.GetMyProfileChanges)
 
+	// Game Lists API
+	api.Get("/lists", handlers.GetGameLists)
+	api.Post("/lists", handlers.CreateGameList)
+	api.Post("/lists/join", handlers.JoinGameList)        // Static route HARUS sebelum /:id
+	api.Get("/lists/:id", handlers.GetGameListDetail)
+	api.Put("/lists/:id", handlers.UpdateGameList)
+	api.Delete("/lists/:id", handlers.DeleteGameList)
+	api.Delete("/lists/:id/leave", handlers.LeaveGameList)
+	api.Post("/lists/:id/invite", handlers.RegenerateInviteCode)
+
+	// Game Entries API
+	api.Get("/lists/:id/entries", handlers.GetGameEntries)
+	api.Post("/lists/:id/entries", handlers.CreateGameEntry)
+	api.Put("/lists/:id/entries/:eid", handlers.UpdateGameEntry)
+	api.Delete("/lists/:id/entries/:eid", handlers.DeleteGameEntry)
+	api.Patch("/lists/:id/entries/:eid/status", handlers.ToggleGameEntryStatus)
+
+	// Game Media API
+	api.Get("/lists/:id/entries/:eid/media", handlers.GetGameMedia)
+	api.Post("/lists/:id/entries/:eid/media", handlers.UploadGameMedia)
+	api.Delete("/lists/:id/entries/:eid/media/:mid", handlers.DeleteGameMedia)
+
+	// Game Reviews API
+	api.Get("/lists/:id/entries/:eid/reviews", handlers.GetGameReviews)
+	api.Post("/lists/:id/entries/:eid/reviews", handlers.SubmitGameReview)
+
 	// Admin Routes (RBAC Protected)
 	api.Get("/admin/users", middleware.RequirePermission("view_users_list"), handlers.GetAllUsers)
+	api.Put("/admin/users/:id/approve", middleware.RequirePermission("manage_user_permissions"), handlers.ApproveUser)
 	api.Get("/admin/playing-together", middleware.RequirePermission("view_playing_together"), handlers.GetPlayingTogether)
 	api.Get("/admin/shadow-activities", middleware.RequirePermission("view_shadow_activities"), handlers.GetShadowActivities)
 	api.Put("/admin/shadow-activities/:id", middleware.RequirePermission("review_shadow_activities"), handlers.ReviewShadowActivity)

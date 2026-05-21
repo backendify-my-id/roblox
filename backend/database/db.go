@@ -91,6 +91,11 @@ func ConnectDB() {
 		&models.ActivityLog{},
 		&models.ProfileChangeLog{},
 		&models.ShadowActivity{},
+		&models.GameList{},
+		&models.GameListMember{},
+		&models.GameEntry{},
+		&models.GameMedia{},
+		&models.GameReview{},
 	)
 	if err != nil {
 		log.Fatal("Failed to auto migrate database schemas: ", err)
@@ -110,8 +115,8 @@ func backfillShadowActivities(db *gorm.DB) {
 	}
 
 	// Query ini menerapkan threshold 20 menit yang sama dengan deteksi real-time:
-	// hanya catat insiden siluman di mana user sudah offline selama >= 20 menit
-	// sebelum avatar berubah.
+	// hanya catat insiden siluman di mana user sudah berada dalam status Offline
+	// selama >= 20 menit sebelum avatar berubah.
 	query := `
 		SELECT * FROM (
 			SELECT 
@@ -131,21 +136,21 @@ func backfillShadowActivities(db *gorm.DB) {
 				) AS presence_status,
 				COALESCE(
 					(
-						-- Waktu terakhir user terdeteksi TIDAK offline sebelum perubahan avatar ini
+						-- Kapan user MASUK ke status Offline sebelum perubahan avatar ini
 						SELECT al.created_at
 						FROM activity_logs al
 						WHERE al.user_id = pcl.user_id
 						  AND al.created_at <= pcl.created_at
-						  AND al.status NOT IN ('Offline', 'First Added', 'Removed', 'Added Again')
+						  AND al.status = 'Offline'
 						ORDER BY al.created_at DESC
 						LIMIT 1
 					), pcl.created_at - INTERVAL '24 hours'
-				) AS last_online_at
+				) AS went_offline_at
 			FROM profile_change_logs pcl
 			WHERE pcl.change_type = 'avatar'
 		) AS sub
 		WHERE sub.presence_status = 'Offline'
-		  AND EXTRACT(EPOCH FROM (sub.created_at - sub.last_online_at)) >= 1200
+		  AND EXTRACT(EPOCH FROM (sub.created_at - sub.went_offline_at)) >= 1200
 	`
 
 	var historis []TempShadow

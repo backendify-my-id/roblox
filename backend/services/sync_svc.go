@@ -173,23 +173,24 @@ func logChange(targetUserID uint, ownerID uint, username, changeType, oldVal, ne
 		var u models.User
 		if err := database.DB.Select("current_presence").First(&u, targetUserID).Error; err == nil {
 			if u.CurrentPresence == "Offline" {
-				// Cari log aktivitas terakhir di mana status BUKAN Offline
-				var lastOnlineLog models.ActivityLog
+				// Cari kapan user MASUK ke status Offline saat ini (log Offline terbaru)
+				var lastOfflineLog models.ActivityLog
 				err := database.DB.
-					Where("user_id = ? AND status NOT IN ?", targetUserID, []string{"Offline", "First Added", "Removed", "Added Again"}).
+					Where("user_id = ? AND status = 'Offline'", targetUserID).
 					Order("created_at DESC").
-					First(&lastOnlineLog).Error
-
-				offlineDuration := time.Duration(0)
-				if err == nil {
-					// Ada log online sebelumnya — hitung sudah berapa lama offline
-					offlineDuration = time.Since(lastOnlineLog.CreatedAt)
-				} else {
-					// Tidak ada riwayat online sama sekali → anggap offline sangat lama
-					offlineDuration = 24 * time.Hour
-				}
+					First(&lastOfflineLog).Error
 
 				const shadowThreshold = 20 * time.Minute
+
+				if err != nil {
+					// Tidak ada log Offline sama sekali — skip, data tidak cukup
+					log.Printf("[ShadowActivity] Skipped for %s (ID %d): no Offline log found\n", username, targetUserID)
+					return
+				}
+
+				// Hitung sudah berapa lama berada dalam status Offline saat ini
+				offlineDuration := time.Since(lastOfflineLog.CreatedAt)
+
 				if offlineDuration >= shadowThreshold {
 					shadowAct := models.ShadowActivity{
 						UserID:     targetUserID,

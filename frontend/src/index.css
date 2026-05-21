@@ -1,16 +1,19 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --bg-dark: #0f172a;
-  --bg-card: #1e293b;
+  --bg-dark: #070d16;
+  --bg-card: rgba(20, 27, 45, 0.6);
+  --bg-card-solid: #111827;
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
-  --accent-primary: #3b82f6;
-  --accent-hover: #2563eb;
+  --accent-primary: #ec4899;
+  --accent-hover: #db2777;
+  --accent-purple: #8b5cf6;
+  --accent-purple-hover: #7c3aed;
   
-  --status-online: #22c55e;
+  --status-online: #10b981;
   --status-offline: #64748b;
-  --status-ingame: #eab308;
+  --status-ingame: #fbbf24;
   --status-instudio: #f97316;
 }
 
@@ -21,8 +24,11 @@
 }
 
 body {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Outfit', 'Inter', sans-serif;
   background-color: var(--bg-dark);
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(236, 72, 153, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.05) 0px, transparent 50%);
   color: var(--text-main);
   min-height: 100vh;
   display: flex;
@@ -43,25 +49,28 @@ body {
 }
 
 .header h1 {
-  font-size: 2.5rem;
-  font-weight: 700;
-  background: linear-gradient(to right, #60a5fa, #a78bfa);
+  font-size: 2.75rem;
+  font-weight: 800;
+  background: linear-gradient(to right, #ec4899, #8b5cf6);
   -webkit-background-clip: text;
   color: transparent;
   margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
 }
 
 .header p {
   color: var(--text-muted);
-  font-size: 1.1rem;
+  font-size: 1.15rem;
 }
 
 /* Add Friend Form */
 .add-friend-container {
   background: var(--bg-card);
+  backdrop-filter: blur(16px);
   padding: 1.5rem;
-  border-radius: 1rem;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
   margin-bottom: 2rem;
   display: flex;
   flex-direction: column;
@@ -77,34 +86,38 @@ body {
 .add-friend-input {
   flex: 1;
   padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  border: 1px solid #334155;
-  background: #0f172a;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(15, 23, 42, 0.6);
   color: var(--text-main);
   font-size: 1rem;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: all 0.2s ease;
 }
 
 .add-friend-input:focus {
   outline: none;
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.2);
+  background: rgba(15, 23, 42, 0.8);
 }
 
 .btn-primary {
   padding: 0.75rem 1.5rem;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   border: none;
-  background: var(--accent-primary);
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-purple));
   color: white;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 1rem;
   cursor: pointer;
-  transition: background-color 0.2s, transform 0.1s;
+  box-shadow: 0 4px 14px rgba(236, 72, 153, 0.3);
+  transition: all 0.2s ease;
 }
 
 .btn-primary:hover {
-  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(236, 72, 153, 0.4);
+  filter: brightness(1.1);
 }
 
 .btn-primary:active {
@@ -122,10 +135,12 @@ body {
 /* Friend Card */
 .friend-card {
   background: var(--bg-card);
-  border-radius: 1rem;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 1.25rem;
   padding: 1.5rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -134,8 +149,9 @@ body {
 }
 
 .friend-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+  transform: translateY(-6px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 0 15px rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.2);
 }
 
 .card-header {
@@ -382,24 +398,25 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(15, 23, 42, 0.8);
-  backdrop-filter: blur(4px);
+  background: rgba(9, 13, 22, 0.85);
+  backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 50;
+  z-index: 150;
   animation: fadeIn 0.3s ease;
 }
 
 .modal-content {
-  background: var(--bg-card);
+  background: var(--bg-card-solid);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   width: 90%;
   max-width: 600px;
-  border-radius: 1rem;
+  border-radius: 1.5rem;
   padding: 2rem;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  animation: slideUp 0.3s ease;
-  max-height: 80vh;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 40px rgba(236, 72, 153, 0.05);
+  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  max-height: 85vh;
   overflow-y: auto;
 }
 
