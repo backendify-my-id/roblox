@@ -80,8 +80,13 @@ func ConnectDB() {
 
 	log.Println("Database connection established")
 
-	// log.Println("Dropping old tables to apply breaking schema changes...")d
-	// DB.Migrator().DropTable(&models.ActivityLog{}, &models.ProfileChangeLog{}, &models.Friend{}, &models.User{})
+	// Clean up duplicate friend records to ensure we can safely apply the unique index
+	DB.Exec(`
+		DELETE FROM friends a USING friends b 
+		WHERE a.id > b.id 
+		  AND a.user_id = b.user_id 
+		  AND a.friend_id = b.friend_id
+	`)
 
 	err = DB.AutoMigrate(
 		&models.Permission{},

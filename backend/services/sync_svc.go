@@ -103,6 +103,10 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 			}
 			if changed {
 				database.DB.Save(&targetUser)
+				Hub.Broadcast(WSMessage{
+					Type:   "profile_update",
+					UserID: targetUser.ID,
+				})
 			}
 		}
 
@@ -115,6 +119,10 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 					OwnerID:  &userID,
 					Status:   "Added Again",
 					GameName: "-",
+				})
+				Hub.Broadcast(WSMessage{
+					Type:   "presence_update",
+					UserID: targetUser.ID,
 				})
 			}
 		} else {
@@ -131,6 +139,10 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 				GameName: "-",
 			})
 			log.Printf("[Sync] New friend added: %s (%s)\n", targetUser.RobloxUsername, targetUser.RobloxUserID)
+			Hub.Broadcast(WSMessage{
+				Type:   "presence_update",
+				UserID: targetUser.ID,
+			})
 		}
 	}
 
@@ -149,6 +161,10 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 					GameName: "-",
 				})
 				log.Printf("[Sync] Friend removed: %s (%s)\n", ef.TargetUser.RobloxUsername, ef.TargetUser.RobloxUserID)
+				Hub.Broadcast(WSMessage{
+					Type:   "presence_update",
+					UserID: ef.TargetUser.ID,
+				})
 			}
 		}
 	}

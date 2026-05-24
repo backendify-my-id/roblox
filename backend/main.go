@@ -10,6 +10,7 @@ import (
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/handlers"
 	"github.com/apany/roblox-friend-tracker/middleware"
+	"github.com/apany/roblox-friend-tracker/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
@@ -23,6 +24,7 @@ func main() {
 
 	database.ConnectDB()
 	cache.ConnectRedis()
+	services.InitWSHub()
 	cron.StartJobs()
 
 	// TRUST_PROXY configuration as per PRD
@@ -70,6 +72,9 @@ func main() {
 	api.Post("/auth/login", handlers.Login)
 	api.Post("/auth/logout", middleware.Protected(), handlers.Logout)
 	api.Get("/public/lists/:shareToken", handlers.GetPublicGameList)
+
+	// WebSocket Route
+	api.Get("/ws", handlers.UpgradeWebSocket, handlers.HandleWebSocket())
 
 	// Protected Routes
 	api.Use(middleware.Protected())
@@ -130,7 +135,10 @@ func main() {
 	api.Get("/admin/users/:id/tracked-by", middleware.RequirePermission("view_users_list"), handlers.GetUserTrackers)
 	api.Put("/admin/users/:id/note", middleware.RequirePermission("view_users_list"), handlers.UpdateAdminNote)
 	api.Put("/admin/users/:id/role", middleware.RequirePermission("manage_user_permissions"), handlers.UpdateUserRole)
+	api.Get("/admin/logs/files", middleware.RequirePermission("view_users_list"), handlers.GetCronLogFiles)
+	api.Get("/admin/logs/files/:filename", middleware.RequirePermission("view_users_list"), handlers.GetCronLogContent)
 	api.Get("/admin/backup", handlers.BackupDatabase)
+	api.Post("/admin/restore", handlers.RestoreDatabase)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {

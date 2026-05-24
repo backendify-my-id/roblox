@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/apany/roblox-friend-tracker/database"
@@ -104,7 +106,7 @@ func GetUserActivityLogs(c *fiber.Ctx) error {
 
 	userId := c.Params("id")
 	offset := c.QueryInt("offset", 0)
-	limit := 100
+	limit := c.QueryInt("limit", 100)
 
 	var logs []models.ActivityLog
 	if err := database.DB.Where("user_id = ?", userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
@@ -282,6 +284,69 @@ func BackupDatabase(c *fiber.Ctx) error {
 	return c.Send(out)
 }
 
+func RestoreDatabase(c *fiber.Ctx) error {
+	role := c.Locals("role").(string)
+	if role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
+	}
+
+	file, err := c.FormFile("backup")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Failed to receive uploaded file: " + err.Error()})
+	}
+
+	// Create temp directory if it doesn't exist
+	tempDir := "./temp"
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create temp directory"})
+	}
+
+	// Save uploaded file
+	tempFile := fmt.Sprintf("%s/restore_%d.sql", tempDir, time.Now().UnixNano())
+	if err := c.SaveFile(file, tempFile); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save backup file: " + err.Error()})
+	}
+	defer os.Remove(tempFile)
+
+	host := os.Getenv("DB_HOST")
+	user := os.Getenv("DB_USER")
+	password := os.Getenv("DB_PASSWORD")
+	dbname := os.Getenv("DB_NAME")
+	port := os.Getenv("DB_PORT")
+
+	if host == "" { host = "localhost" }
+	if user == "" { user = "roblox_user" }
+	if password == "" { password = "roblox_password" }
+	if dbname == "" { dbname = "roblox_tracker" }
+	if port == "" { port = "5432" }
+
+	// Step 1: Clean the database by dropping and recreating the public schema
+	cleanCmd := exec.Command("psql", "-h", host, "-p", port, "-U", user, "-d", dbname, "-c", "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;")
+	cleanCmd.Env = append(os.Environ(), "PGPASSWORD="+password)
+
+	var cleanStderr bytes.Buffer
+	cleanCmd.Stderr = &cleanStderr
+	if err := cleanCmd.Run(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to clean database: " + err.Error() + " (details: " + cleanStderr.String() + ")",
+		})
+	}
+
+	// Step 2: Run psql to restore the backup file
+	restoreCmd := exec.Command("psql", "-h", host, "-p", port, "-U", user, "-d", dbname, "-f", tempFile)
+	restoreCmd.Env = append(os.Environ(), "PGPASSWORD="+password)
+
+	var restoreStderr bytes.Buffer
+	restoreCmd.Stderr = &restoreStderr
+	if err := restoreCmd.Run(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to restore database: " + err.Error() + " (details: " + restoreStderr.String() + ")",
+		})
+	}
+
+	return c.JSON(fiber.Map{"message": "Database successfully restored from backup!"})
+}
+
 func GetPlayingTogether(c *fiber.Ctx) error {
 	scopeFriendsOnly, _ := c.Locals("scope_friends_only").(bool)
 	roleName, _ := c.Locals("role").(string)
@@ -441,4 +506,47 @@ func UpdateUserRole(c *fiber.Ctx) error {
 		"message": "User role updated successfully",
 		"role":    role.Name,
 	})
+}
+
+// GetCronLogFiles lists all available daily cron log files, sorted descending.
+func GetCronLogFiles(c *fiber.Ctx) error {
+	logDir := filepath.Join(".", "logs")
+	files, err := os.ReadDir(logDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return c.JSON([]string{})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to read logs directory: " + err.Error()})
+	}
+
+	var logFiles []string
+	for _, f := range files {
+		if !f.IsDir() && strings.HasPrefix(f.Name(), "cron_") && strings.HasSuffix(f.Name(), ".log") {
+			logFiles = append(logFiles, f.Name())
+		}
+	}
+
+	sort.Slice(logFiles, func(i, j int) bool {
+		return logFiles[i] > logFiles[j]
+	})
+
+	return c.JSON(logFiles)
+}
+
+// GetCronLogContent returns the raw content of a specified log file.
+func GetCronLogContent(c *fiber.Ctx) error {
+	fileName := c.Params("filename")
+
+	// Validate filename to prevent path traversal
+	if strings.Contains(fileName, "..") || strings.Contains(fileName, "/") || strings.Contains(fileName, "\\") {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid log filename"})
+	}
+
+	filePath := filepath.Join(".", "logs", fileName)
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Log file not found or could not be read: " + err.Error()})
+	}
+
+	return c.SendString(string(content))
 }

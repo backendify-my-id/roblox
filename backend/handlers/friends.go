@@ -143,6 +143,12 @@ func ManualSync(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
+	if !user.IsApproved {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Akun Anda belum disetujui oleh admin. Hubungi admin untuk mendapatkan persetujuan akses.",
+		})
+	}
+
 	log.Printf("[ManualSync] Syncing friends for user %s (roblox_id=%s)", user.RobloxUsername, user.RobloxUserID)
 
 	lockKey := fmt.Sprintf("lock:manual_sync:%d", userId)
@@ -172,7 +178,7 @@ func GetActivityLogs(c *fiber.Ctx) error {
 
 	// Ambil offset dari query parameter
 	offset := c.QueryInt("offset", 0)
-	limit := 50 // Tetapkan limit per halaman
+	limit := c.QueryInt("limit", 50) // Tetapkan limit per halaman
 
 	var friend models.Friend
 	// Preload TargetUser and StealthExempts

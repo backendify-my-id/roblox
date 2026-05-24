@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { fetchWithAuth } from './utils/api';
+import { fetchWithAuth, API_URL } from './utils/api';
 import Auth from './components/Auth';
 import FriendCard from './components/FriendCard';
 import ActivityModal from './components/ActivityModal';
@@ -58,6 +58,74 @@ function Dashboard({ user, showToast }) {
   useEffect(() => {
     fetchFriends();
   }, [fetchFriends]);
+
+  // Real-time WebSocket connection
+  useEffect(() => {
+    let socket;
+    let reconnectTimeout;
+    let isMounted = true;
+
+    const connectWebSocket = () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        let wsUrl = API_URL.replace(/^http/, 'ws');
+        wsUrl = `${wsUrl}/api/ws?token=${encodeURIComponent(token)}`;
+
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = () => {
+          console.log('[WS] Connected to real-time status stream');
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            console.log('[WS] Message received:', data);
+
+            if (data.type === 'presence_update' || data.type === 'profile_update') {
+              const updatedFriend = data.payload;
+              if (updatedFriend && updatedFriend.id) {
+                setFriends((prevFriends) => {
+                  return prevFriends.map((f) => 
+                    f.id === updatedFriend.id ? { ...f, ...updatedFriend } : f
+                  );
+                });
+              }
+            }
+          } catch (err) {
+            console.error('[WS] Error processing message:', err);
+          }
+        };
+
+        socket.onclose = (event) => {
+          console.log('[WS] Connection closed:', event.reason);
+          if (isMounted) {
+            reconnectTimeout = setTimeout(connectWebSocket, 3000);
+          }
+        };
+
+        socket.onerror = (err) => {
+          console.error('[WS] Socket error:', err);
+        };
+      } catch (err) {
+        console.error('[WS] Connection error:', err);
+      }
+    };
+
+    connectWebSocket();
+
+    return () => {
+      isMounted = false;
+      if (socket) {
+        socket.close();
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+    };
+  }, []);
 
   const handleManualSync = async () => {
     setIsSyncing(true);

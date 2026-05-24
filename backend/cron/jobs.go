@@ -2,7 +2,6 @@ package cron
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"time"
 
@@ -23,32 +22,44 @@ func StartJobs() {
 	c.AddFunc("*/5 * * * *", syncAllPresences)
 
 	c.Start()
-	log.Println("Cron jobs started")
+	LogCron("INFO", "Cron jobs scheduler successfully started and running in background.")
 }
 
 func syncAllFriends() {
+	startTime := time.Now()
+	LogCron("INFO", "Starting 15-minute friends & profile sync job...")
+
 	lockKey := "lock:friends_sync"
 	// Try to acquire lock with 14 minutes expiration (since job runs every 15 mins)
 	acquired, err := cache.RDB.SetNX(cache.Ctx, lockKey, "locked", 14*time.Minute).Result()
 	if err != nil {
-		log.Println("[FriendsSync] Error acquiring Redis lock:", err)
+		LogCron("ERROR", "[FriendsSync] Failed to acquire Redis lock due to error: %v", err)
 		return
 	}
 	if !acquired {
-		log.Println("[FriendsSync] Skipped: another instance is running the sync")
+		LogCron("WARNING", "[FriendsSync] Sync skipped: another instance is currently running the sync lock.")
 		return
 	}
-	defer cache.RDB.Del(cache.Ctx, lockKey)
+	defer func() {
+		cache.RDB.Del(cache.Ctx, lockKey)
+		LogCron("INFO", "[FriendsSync] Released Redis lock '%s'.", lockKey)
+	}()
 
-	log.Println("Starting 15-minute friends & profile sync...")
+	LogCron("INFO", "[FriendsSync] Successfully acquired Redis lock '%s' for friends & profile sync.", lockKey)
+
 	var users []models.User
-	// Only sync friends for registered users (those who have a role)
-	if err := database.DB.Where("role_id IS NOT NULL").Find(&users).Error; err != nil {
-		log.Println("Error fetching users for friend sync:", err)
+	// Only sync friends for registered users who are approved
+	if err := database.DB.Where("role_id IS NOT NULL AND is_approved = ?", true).Find(&users).Error; err != nil {
+		LogCron("ERROR", "[FriendsSync] Failed to fetch approved users for friend sync: %v", err)
 		return
 	}
 
-	for _, user := range users {
+	LogCron("INFO", "[FriendsSync] Found %d active users in database to perform friend sync for.", len(users))
+
+	successCount := 0
+	failCount := 0
+
+	for idx, user := range users {
 		checkKey := fmt.Sprintf("last_name_check:%d", user.ID)
 		checkNames := false
 		
@@ -57,44 +68,73 @@ func syncAllFriends() {
 			checkNames = true
 		}
 		
+		LogCron("INFO", "[FriendsSync] [%d/%d] Starting sync for user '%s' (RobloxUserID: %s, CheckNames: %t)", 
+			idx+1, len(users), user.RobloxUsername, user.RobloxUserID, checkNames)
+
 		if err := services.SyncUserFriends(user.ID, user.RobloxUserID, checkNames); err != nil {
-			log.Printf("Error syncing friends for user %s: %v\n", user.RobloxUsername, err)
-		} else if checkNames {
-			// Update the check time on success with a 1-hour TTL
-			cache.RDB.Set(cache.Ctx, checkKey, "done", 1*time.Hour)
+			LogCron("ERROR", "[FriendsSync] [%d/%d] Error syncing friends for user '%s': %v", 
+				idx+1, len(users), user.RobloxUsername, err)
+			failCount++
+		} else {
+			LogCron("INFO", "[FriendsSync] [%d/%d] Successfully synced friends for user '%s'.", 
+				idx+1, len(users), user.RobloxUsername)
+			successCount++
+			if checkNames {
+				// Update the check time on success with a 1-hour TTL
+				cache.RDB.Set(cache.Ctx, checkKey, "done", 1*time.Hour)
+				LogCron("INFO", "[FriendsSync] [%d/%d] Set last_name_check key for '%s' in Redis with 1-hour TTL.", 
+					idx+1, len(users), user.RobloxUsername)
+			}
 		}
 	}
-	log.Println("15-minute friends & profile sync completed")
+	
+	duration := time.Since(startTime)
+	LogCron("INFO", "[FriendsSync] Completed. Success: %d, Failed: %d, Duration: %v", successCount, failCount, duration)
 }
 
 func syncAllPresences() {
+	startTime := time.Now()
+	LogCron("INFO", "Starting 5-minute active friends presence sync job...")
+
 	lockKey := "lock:presence_sync"
 	// Try to acquire lock with 4 minutes expiration (since job runs every 5 mins)
 	acquired, err := cache.RDB.SetNX(cache.Ctx, lockKey, "locked", 4*time.Minute).Result()
 	if err != nil {
-		log.Println("[PresenceSync] Error acquiring Redis lock:", err)
+		LogCron("ERROR", "[PresenceSync] Failed to acquire Redis lock due to error: %v", err)
 		return
 	}
 	if !acquired {
-		log.Println("[PresenceSync] Skipped: another instance is running the sync")
+		LogCron("WARNING", "[PresenceSync] Sync skipped: another instance is currently running the presence sync lock.")
 		return
 	}
-	defer cache.RDB.Del(cache.Ctx, lockKey)
+	defer func() {
+		cache.RDB.Del(cache.Ctx, lockKey)
+		LogCron("INFO", "[PresenceSync] Released Redis lock '%s'.", lockKey)
+	}()
 
-	log.Println("Starting 5-minute presence sync...")
+	LogCron("INFO", "[PresenceSync] Successfully acquired Redis lock '%s' for presence sync.", lockKey)
+
 	var friends []models.Friend
-	if err := database.DB.Preload("TargetUser").Where("status = ?", "active").Find(&friends).Error; err != nil {
-		log.Println("Error fetching active friends for presence sync:", err)
+	if err := database.DB.Preload("TargetUser").
+		Joins("JOIN users owner ON friends.user_id = owner.id").
+		Where("friends.status = ? AND owner.is_approved = ?", "active", true).
+		Find(&friends).Error; err != nil {
+		LogCron("ERROR", "[PresenceSync] Failed to fetch active friends for approved users: %v", err)
 		return
 	}
+
+	LogCron("INFO", "[PresenceSync] Found %d active friend linkages to sync.", len(friends))
 
 	if len(friends) == 0 {
+		LogCron("INFO", "[PresenceSync] No active friends to check. Sync completed.")
 		return
 	}
 
 	// Get all stealth users and their exemptions
 	var stealthUsers []models.User
-	database.DB.Preload("StealthExempts").Where("is_stealth = ?", true).Find(&stealthUsers)
+	if err := database.DB.Preload("StealthExempts").Where("is_stealth = ?", true).Find(&stealthUsers).Error; err != nil {
+		LogCron("ERROR", "[PresenceSync] Failed to fetch stealth users: %v", err)
+	}
 	
 	// stealthMap[AdminRobloxID][ViewerUserID] = true (means viewer CAN bypass)
 	stealthMap := make(map[string]map[uint]bool)
@@ -105,9 +145,9 @@ func syncAllPresences() {
 		}
 		stealthMap[su.RobloxUserID] = exempts
 	}
-
+	
 	if len(stealthMap) > 0 {
-		log.Printf("[Stealth] Active stealth users: %d\n", len(stealthMap))
+		LogCron("INFO", "[PresenceSync] [Stealth] Loaded %d active stealth users configuration into memory.", len(stealthMap))
 	}
 
 	// Deduplicate roblox IDs to minimize API calls
@@ -123,6 +163,9 @@ func syncAllPresences() {
 		}
 	}
 
+	LogCron("INFO", "[PresenceSync] Deduplicated active friend targets count: %d (original linkages: %d)", 
+		len(uniqueIDs), len(friends))
+
 	// Batch into max 100 per request
 	batchSize := 100
 	presenceMap := make(map[uint64]services.PresenceData)
@@ -134,11 +177,17 @@ func syncAllPresences() {
 		}
 		batch := uniqueIDs[i:end]
 
+		LogCron("INFO", "[PresenceSync] [API Request] Fetching presence for batch [%d-%d] (size: %d)...", 
+			i, end, len(batch))
+
 		pData, err := services.GetPresences(batch)
 		if err != nil {
-			log.Printf("Error fetching presences for batch: %v\n", err)
+			LogCron("ERROR", "[PresenceSync] [API Error] Failed to fetch presences for batch [%d-%d]: %v", i, end, err)
 			continue
 		}
+
+		LogCron("INFO", "[PresenceSync] [API Response] Successfully received presence data for batch [%d-%d] (received details: %d)", 
+			i, end, len(pData))
 
 		for k, v := range pData {
 			presenceMap[k] = v
@@ -147,6 +196,7 @@ func syncAllPresences() {
 
 	// Track updated user IDs to prevent duplicate logs/updates for the same user targeted by multiple people
 	updatedUserIDs := make(map[uint]bool)
+	changeCount := 0
 
 	// Update friends and log activities
 	for _, f := range friends {
@@ -156,6 +206,7 @@ func syncAllPresences() {
 
 		rID, err := strconv.ParseUint(f.TargetUser.RobloxUserID, 10, 64)
 		if err != nil {
+			LogCron("ERROR", "[PresenceSync] Failed to parse RobloxUserID '%s' to uint64: %v", f.TargetUser.RobloxUserID, err)
 			continue
 		}
 
@@ -178,6 +229,9 @@ func syncAllPresences() {
 			}
 
 			if f.TargetUser.CurrentPresence != statusStr || f.TargetUser.CurrentGameName != p.LastLocation {
+				oldPresence := f.TargetUser.CurrentPresence
+				oldGame := f.TargetUser.CurrentGameName
+
 				f.TargetUser.CurrentPresence = statusStr
 				f.TargetUser.CurrentGameName = p.LastLocation
 				database.DB.Save(&f.TargetUser)
@@ -191,7 +245,15 @@ func syncAllPresences() {
 					IsStealth: isStealth,
 				}
 				database.DB.Create(&newLog)
-				log.Printf("[Activity] %s is now %s (%s)\n", f.TargetUser.RobloxUsername, statusStr, p.LastLocation)
+				
+				LogCron("INFO", "[PresenceSync] [Change Detected] User '%s' (RobloxUserID: %d) status changed from '%s' (%s) to '%s' (%s). Logged new activity record (Stealth: %t).", 
+					f.TargetUser.RobloxUsername, rID, oldPresence, oldGame, statusStr, p.LastLocation, isStealth)
+				changeCount++
+
+				services.Hub.Broadcast(services.WSMessage{
+					Type:   "presence_update",
+					UserID: f.TargetUser.ID,
+				})
 
 				// Auto-create or update map in database if the target is In-Game
 				if statusStr == "In-Game" && p.LastLocation != "" && p.LastLocation != "-" {
@@ -204,7 +266,7 @@ func syncAllPresences() {
 								oldName := existingMap.Name
 								existingMap.Name = p.LastLocation
 								hasChanges = true
-								log.Printf("[AutoMap] Updated map name for UniverseID %d: %s -> %s\n", *p.UniverseId, oldName, p.LastLocation)
+								LogCron("INFO", "[AutoMap] [Update] Updated map name for UniverseID %d: '%s' -> '%s'", *p.UniverseId, oldName, p.LastLocation)
 							}
 							if existingMap.Description == "" || existingMap.UrlPath == "" {
 								gName, gDesc, gRootPlaceID, err := services.GetUniverseDetails(*p.UniverseId)
@@ -225,8 +287,9 @@ func syncAllPresences() {
 										existingMap.Name = gName
 										hasChanges = true
 									}
+									LogCron("INFO", "[AutoMap] [Details Fetched] Fetched info for existing UniverseID %d. Name: '%s', PlaceID: %d", *p.UniverseId, gName, gRootPlaceID)
 								} else {
-									log.Printf("[AutoMap] Failed to fetch details for UniverseID %d: %v\n", *p.UniverseId, err)
+									LogCron("ERROR", "[AutoMap] [API Error] Failed to fetch details for UniverseID %d: %v", *p.UniverseId, err)
 								}
 							}
 							if hasChanges {
@@ -251,14 +314,15 @@ func syncAllPresences() {
 									}
 									nameMap.Description = gDesc
 									nameMap.UrlPath = urlPath
+									LogCron("INFO", "[AutoMap] [Link] Fetched details to link with name-based map: UniverseID %d, PlaceID: %d", *p.UniverseId, gRootPlaceID)
 								} else {
-									log.Printf("[AutoMap] Failed to fetch details for UniverseID %d: %v\n", *p.UniverseId, err)
+									LogCron("ERROR", "[AutoMap] [API Error] Failed to fetch link details for UniverseID %d: %v", *p.UniverseId, err)
 								}
 								nameMap.UniverseID = p.UniverseId
 								nameMap.PlaceID = resolvedPlaceID
 								nameMap.UpdatedAt = time.Now()
 								database.DB.Save(&nameMap)
-								log.Printf("[AutoMap] Linked UniverseID %d and PlaceID %d to manual map: %s\n", *p.UniverseId, *resolvedPlaceID, p.LastLocation)
+								LogCron("INFO", "[AutoMap] Linked UniverseID %d and PlaceID %d to manual map: '%s'", *p.UniverseId, *resolvedPlaceID, p.LastLocation)
 							} else {
 								// Brand new map! Fetch details first
 								gName, gDesc, gRootPlaceID, err := services.GetUniverseDetails(*p.UniverseId)
@@ -272,8 +336,9 @@ func syncAllPresences() {
 									if gName != "" {
 										p.LastLocation = gName
 									}
+									LogCron("INFO", "[AutoMap] [New Details] Fetched info for brand new UniverseID %d. Name: '%s', PlaceID: %d", *p.UniverseId, gName, gRootPlaceID)
 								} else {
-									log.Printf("[AutoMap] Failed to fetch details for new UniverseID %d: %v\n", *p.UniverseId, err)
+									LogCron("ERROR", "[AutoMap] [API Error] Failed to fetch details for new UniverseID %d: %v", *p.UniverseId, err)
 								}
 
 								newMap := models.RobloxMap{
@@ -286,7 +351,9 @@ func syncAllPresences() {
 									UpdatedAt:   time.Now(),
 								}
 								if err := database.DB.Create(&newMap).Error; err == nil {
-									log.Printf("[AutoMap] Added brand new map with UniverseID %d: %s\n", *p.UniverseId, p.LastLocation)
+									LogCron("INFO", "[AutoMap] Successfully created brand new RobloxMap with UniverseID %d: '%s'", *p.UniverseId, p.LastLocation)
+								} else {
+									LogCron("ERROR", "[AutoMap] Failed to write new RobloxMap with UniverseID %d to DB: %v", *p.UniverseId, err)
 								}
 							}
 						}
@@ -300,7 +367,7 @@ func syncAllPresences() {
 								UpdatedAt: time.Now(),
 							}
 							if err := database.DB.Create(&newMap).Error; err == nil {
-								log.Printf("[AutoMap] Added new map (fallback) to database: %s\n", p.LastLocation)
+								LogCron("INFO", "[AutoMap] Fallback name-only map added to DB: '%s'", p.LastLocation)
 							}
 						}
 					}
@@ -310,5 +377,74 @@ func syncAllPresences() {
 			}
 		}
 	}
-	log.Println("5-minute presence sync completed")
+	
+	duration := time.Since(startTime)
+	LogCron("INFO", "[PresenceSync] Completed. Total processed: %d targets, Status changes detected: %d, Duration: %v", 
+		len(friends), changeCount, duration)
+
+	// Backfill missing avatars in database using remaining API hits budget
+	backfillMissingAvatars()
+}
+
+func backfillMissingAvatars() {
+	remainingHits := services.GetRemainingHits()
+	if remainingHits < 5 {
+		LogCron("INFO", "[BackfillAvatars] Skipped: only %d API hits remaining in current window.", remainingHits)
+		return
+	}
+
+	var usersWithoutAvatar []models.User
+	// Query up to 100 users who don't have an avatar URL
+	if err := database.DB.Where("(avatar_url = '' OR avatar_url IS NULL) AND roblox_user_id != ''").Limit(100).Find(&usersWithoutAvatar).Error; err != nil {
+		LogCron("ERROR", "[BackfillAvatars] Failed to query users without avatar: %v", err)
+		return
+	}
+
+	if len(usersWithoutAvatar) == 0 {
+		LogCron("INFO", "[BackfillAvatars] No users found without avatar. Everything is fully populated.")
+		return
+	}
+
+	LogCron("INFO", "[BackfillAvatars] Found %d users without avatar. Proceeding to backfill using remaining API hits (Current remaining: %d)...", len(usersWithoutAvatar), remainingHits)
+
+	var robloxIDs []uint64
+	idToUserMap := make(map[uint64]*models.User)
+
+	for i := range usersWithoutAvatar {
+		u := &usersWithoutAvatar[i]
+		rID, err := strconv.ParseUint(u.RobloxUserID, 10, 64)
+		if err == nil {
+			robloxIDs = append(robloxIDs, rID)
+			idToUserMap[rID] = u
+		}
+	}
+
+	if len(robloxIDs) == 0 {
+		return
+	}
+
+	avatarMap, err := services.GetAvatars(robloxIDs)
+	if err != nil {
+		LogCron("ERROR", "[BackfillAvatars] Failed to fetch avatars from Roblox: %v", err)
+		return
+	}
+
+	updatedCount := 0
+	for rID, avatarURL := range avatarMap {
+		if avatarURL != "" {
+			if u, exists := idToUserMap[rID]; exists {
+				u.AvatarURL = avatarURL
+				database.DB.Save(u)
+				
+				// Broadcast websocket profile update so UI updates in real-time!
+				services.Hub.Broadcast(services.WSMessage{
+					Type:   "profile_update",
+					UserID: u.ID,
+				})
+				updatedCount++
+			}
+		}
+	}
+
+	LogCron("INFO", "[BackfillAvatars] Successfully backfilled avatars for %d/%d users.", updatedCount, len(usersWithoutAvatar))
 }

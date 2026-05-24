@@ -58,3 +58,20 @@ func waitForRateLimit() {
 	callCount++
 	lastRequest = time.Now()
 }
+
+// GetRemainingHits returns how many API hits are still available in the current 1-minute window.
+func GetRemainingHits() int {
+	rateMu.Lock()
+	defer rateMu.Unlock()
+
+	// If the minute window has expired, the remaining count is reset to 80
+	if time.Since(windowStart) > time.Minute {
+		return 80
+	}
+
+	remaining := 80 - callCount
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
