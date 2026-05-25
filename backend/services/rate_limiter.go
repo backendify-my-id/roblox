@@ -1,9 +1,10 @@
 package services
 
 import (
-	"log"
 	"sync"
 	"time"
+
+	"github.com/apany/roblox-friend-tracker/utils"
 )
 
 // Global rate limiter for all Roblox API calls.
@@ -37,7 +38,7 @@ func waitForRateLimit() {
 	if callCount >= 80 {
 		waitTime := time.Minute - time.Since(windowStart)
 		if waitTime > 0 {
-			log.Printf("[RateLimit] Hit 80 calls in window, sleeping %v", waitTime)
+			utils.LogCron("WARNING", "[RateLimit] Hit 80 calls in window, sleeping %v", waitTime)
 			rateMu.Unlock()
 			time.Sleep(waitTime)
 			rateMu.Lock()

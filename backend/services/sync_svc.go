@@ -2,7 +2,6 @@ package services
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"time"
 
@@ -135,7 +134,7 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 				Status:   "First Added",
 				GameName: "-",
 			})
-			log.Printf("[Sync] New friend added: %s (%s)\n", targetUser.RobloxUsername, targetUser.RobloxUserID)
+			utils.LogCron("INFO", "[Sync] New friend added: %s (%s)", targetUser.RobloxUsername, targetUser.RobloxUserID)
 			Hub.Broadcast(WSMessage{
 				Type:   "presence_update",
 				UserID: targetUser.ID,
@@ -157,7 +156,7 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 					Status:   "Removed",
 					GameName: "-",
 				})
-				log.Printf("[Sync] Friend removed: %s (%s)\n", ef.TargetUser.RobloxUsername, ef.TargetUser.RobloxUserID)
+				utils.LogCron("INFO", "[Sync] Friend removed: %s (%s)", ef.TargetUser.RobloxUsername, ef.TargetUser.RobloxUserID)
 				Hub.Broadcast(WSMessage{
 					Type:   "presence_update",
 					UserID: ef.TargetUser.ID,

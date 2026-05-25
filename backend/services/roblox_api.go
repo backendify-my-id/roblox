@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 
+	"github.com/apany/roblox-friend-tracker/utils"
 	"github.com/google/uuid"
 )
 
@@ -118,20 +118,20 @@ func GetUserDetails(userIds []uint64) (map[uint64]UserDetailData, error) {
 		waitForRateLimit()
 		resp, err := http.Post("https://users.roblox.com/v1/users", "application/json", bytes.NewBuffer(body))
 		if err != nil {
-			log.Printf("[GetUserDetails] HTTP error for batch: %v", err)
+			utils.LogCron("ERROR", "[GetUserDetails] HTTP error for batch: %v", err)
 			continue
 		}
 
 		if resp.StatusCode != 200 {
 			resp.Body.Close()
-			log.Printf("[GetUserDetails] API returned %d for batch", resp.StatusCode)
+			utils.LogCron("ERROR", "[GetUserDetails] API returned %d for batch", resp.StatusCode)
 			continue
 		}
 
 		var res UserDetailsResponse
 		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 			resp.Body.Close()
-			log.Printf("[GetUserDetails] Decode error: %v", err)
+			utils.LogCron("ERROR", "[GetUserDetails] Decode error: %v", err)
 			continue
 		}
 		resp.Body.Close()
@@ -188,21 +188,21 @@ func GetAvatars(userIds []uint64) (map[uint64]string, error) {
 		waitForRateLimit()
 		resp, err := http.Get(url)
 		if err != nil {
-			log.Printf("[GetAvatars] HTTP error for batch: %v", err)
+			utils.LogCron("ERROR", "[GetAvatars] HTTP error for batch: %v", err)
 			continue
 		}
 
 		if resp.StatusCode != 200 {
 			b, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			log.Printf("[GetAvatars] API returned %d for batch: %s", resp.StatusCode, string(b))
+			utils.LogCron("ERROR", "[GetAvatars] API returned %d for batch: %s", resp.StatusCode, string(b))
 			continue
 		}
 
 		var res AvatarResponse
 		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 			resp.Body.Close()
-			log.Printf("[GetAvatars] Decode error: %v", err)
+			utils.LogCron("ERROR", "[GetAvatars] Decode error: %v", err)
 			continue
 		}
 		resp.Body.Close()
