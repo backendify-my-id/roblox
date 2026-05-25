@@ -81,24 +81,19 @@ export default function GameListsPage({ user, showToast, onNavigate }) {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-dark)', padding: '2rem' }}>
+    <div className="lists-page-container">
       {/* Header */}
-      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <h1 style={{
-              fontSize: '2.2rem', fontWeight: 800,
-              background: 'linear-gradient(to right, #ec4899, #8b5cf6)',
-              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-              marginBottom: '0.35rem', letterSpacing: '-0.01em'
-            }}>
+      <div className="lists-page-content">
+        <div className="lists-header">
+          <div className="lists-header-info">
+            <h1 className="lists-header-title">
               ✨ Roblox Co-Play Bucket Lists 💖
             </h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
+            <p className="lists-header-desc">
               Kelola daftar game Roblox yang ingin dimainkan bersama pasangan atau teman dekat, dan abadikan setiap kenangannya!
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div className="lists-header-actions">
             <button
               onClick={() => setShowJoinModal(true)}
               style={{

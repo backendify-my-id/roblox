@@ -133,6 +133,12 @@ func CreateGameEntry(c *fiber.Ctx) error {
 		}
 	}
 
+	// Check if this map is already in the list
+	var existingEntry models.GameEntry
+	if err := database.DB.Where("game_list_id = ? AND roblox_map_id = ?", list.ID, robloxMap.ID).First(&existingEntry).Error; err == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Game ini sudah ada di dalam list game ini"})
+	}
+
 	entry := models.GameEntry{
 		GameListID:  list.ID,
 		AddedByID:   userID,
@@ -240,6 +246,13 @@ func UpdateGameEntry(c *fiber.Ctx) error {
 				database.DB.Create(&robloxMap)
 			}
 		}
+
+		// Check if this map is already in the list for a DIFFERENT entry
+		var existingEntry models.GameEntry
+		if err := database.DB.Where("game_list_id = ? AND roblox_map_id = ? AND id != ?", listID, robloxMap.ID, entry.ID).First(&existingEntry).Error; err == nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Game ini sudah ada di dalam list game ini"})
+		}
+
 		entry.RobloxMapID = robloxMap.ID
 	}
 	entry.Description = input.Description

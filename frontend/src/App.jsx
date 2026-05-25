@@ -165,27 +165,27 @@ function Dashboard({ user, showToast }) {
 
   return (
     <div className="app-container">
-      <div className="header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
-        <div>
-          <h1 style={{ background: 'linear-gradient(to right, #ec4899, #8b5cf6)', WebkitBackgroundClip: 'text', color: 'transparent', fontSize: '2.5rem', margin: 0, fontWeight: 800 }}>
+      <div className="dashboard-header">
+        <div className="header-info">
+          <h1 className="header-title">
             ✨ Roblox Co-Play & Memory Capsule 💖
           </h1>
-          <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+          <p className="header-desc">
             Kapsul waktu kenangan & bucket list petualangan Roblox bersama orang-orang tersayang! 🚀
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--bg-card)', padding: '0.75rem 1.5rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
+        <div className="header-user-card">
           {user.avatar ? (
             <img src={user.avatar} alt="Avatar" style={{ width: 48, height: 48, borderRadius: '50%', border: '2px solid #3b82f6' }} />
           ) : (
             <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</div>
           )}
-          <div>
+          <div className="user-details">
             <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#fff' }}>{user.displayName}</div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>@{user.username}</div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>ID: {user.roblox_id}</div>
             
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.3rem', flexWrap: 'wrap' }}>
+            <div className="user-actions">
               <button
                 onClick={handleManualSync}
                 disabled={isSyncing}
@@ -431,6 +431,12 @@ function App() {
             window.history.pushState({}, '', '/');
             setPublicShareToken(null);
           }}
+          onImportSuccess={() => {
+            window.history.pushState({}, '', '/');
+            setPublicShareToken(null);
+            navigateTo('gameLists');
+          }}
+          showToast={showToastMsg}
         />
         {toast && (
           <div className={`toast toast-${toast.type}`}>
@@ -458,28 +464,15 @@ function App() {
 
   return (
     <>
-      <nav style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '1.25rem 2rem',
-        background: 'rgba(20, 27, 45, 0.7)',
-        backdropFilter: 'blur(16px)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 100,
-        marginBottom: '1rem',
-        fontFamily: "'Outfit', sans-serif"
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer' }} onClick={() => navigateTo('gameLists')}>
-          <span style={{ fontSize: '1.5rem' }}>✨</span>
-          <span style={{ fontWeight: 800, fontSize: '1.25rem', background: 'linear-gradient(to right, #ec4899, #8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.02em' }}>
+      <nav className="navbar">
+        <div className="nav-logo" onClick={() => navigateTo('gameLists')}>
+          <span className="logo-emoji">✨</span>
+          <span className="logo-text">
             Co-Play Capsule
           </span>
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div className="nav-actions">
           <button
             onClick={() => navigateTo('gameLists')}
             style={{

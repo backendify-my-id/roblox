@@ -108,6 +108,7 @@ func GetGameListDetail(c *fiber.Ctx) error {
 		Preload("Entries").
 		Preload("Entries.AddedBy").
 		Preload("Entries.Media").
+		Preload("Entries.RobloxMap").
 		First(&list, listID).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "List not found"})
 	}
@@ -277,6 +278,7 @@ func GetPublicGameList(c *fiber.Ctx) error {
 		Preload("Entries").
 		Preload("Entries.AddedBy").
 		Preload("Entries.Media").
+		Preload("Entries.RobloxMap").
 		Preload("Entries.Reviews").
 		Preload("Entries.Reviews.User").
 		Where("share_token = ?", shareToken).
@@ -285,4 +287,55 @@ func GetPublicGameList(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(list)
+}
+
+func ImportGameList(c *fiber.Ctx) error {
+	userID, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+	shareToken := c.Params("shareToken")
+
+	// 1. Fetch original shared list with its entries
+	var originalList models.GameList
+	if err := database.DB.
+		Preload("Entries").
+		Where("share_token = ?", shareToken).
+		First(&originalList).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Daftar game tidak ditemukan"})
+	}
+
+	// 2. Create cloned list
+	clonedList := models.GameList{
+		Name:        originalList.Name,
+		Description: originalList.Description,
+		OwnerID:     userID,
+		InviteCode:  generateInviteCode(),
+		ShareToken:  generateShareToken(),
+	}
+
+	if err := database.DB.Create(&clonedList).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mengimpor daftar game"})
+	}
+
+	// 3. Add current user as member of the cloned list
+	member := models.GameListMember{
+		GameListID: clonedList.ID,
+		UserID:     userID,
+	}
+	database.DB.Create(&member)
+
+	// 4. Clone all entries
+	for _, entry := range originalList.Entries {
+		clonedEntry := models.GameEntry{
+			GameListID:  clonedList.ID,
+			AddedByID:   userID,
+			RobloxMapID: entry.RobloxMapID,
+			Description: entry.Description,
+			Status:      "to_play", // Reset to fresh status
+		}
+		database.DB.Create(&clonedEntry)
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(clonedList)
 }

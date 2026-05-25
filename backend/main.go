@@ -96,6 +96,7 @@ func main() {
 	api.Get("/lists", handlers.GetGameLists)
 	api.Post("/lists", handlers.CreateGameList)
 	api.Post("/lists/join", handlers.JoinGameList)        // Static route HARUS sebelum /:id
+	api.Post("/lists/import/:shareToken", handlers.ImportGameList)
 	api.Get("/lists/:id", handlers.GetGameListDetail)
 	api.Put("/lists/:id", handlers.UpdateGameList)
 	api.Delete("/lists/:id", handlers.DeleteGameList)

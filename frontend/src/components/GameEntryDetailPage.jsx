@@ -159,26 +159,16 @@ export default function GameEntryDetailPage({ listId, entryId, user, showToast, 
   const mySubmitLabel = reviews.some(r => r.user_id === user?.id) ? 'Perbarui Ulasan' : 'Kirim Ulasan';
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-dark)', padding: '2rem' }}>
-      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+    <div className="lists-page-container">
+      <div className="lists-page-content">
         {/* Back */}
-        <button onClick={onBack} style={{
-          display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'none',
-          border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.9rem', marginBottom: '1.5rem', padding: 0,
-        }}
-          onMouseOver={e => e.currentTarget.style.color = '#f8fafc'}
-          onMouseOut={e => e.currentTarget.style.color = 'var(--text-muted)'}
-        >
+        <button onClick={onBack} className="back-button">
           ← Kembali ke List
         </button>
 
         {/* Entry Info */}
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(16,185,129,0.12)), var(--bg-card)',
-          borderRadius: '1.25rem', padding: '1.75rem 2rem', marginBottom: '2rem',
-          border: '1px solid rgba(255,255,255,0.07)',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+        <div className="entry-detail-header-card">
+          <div className="entry-detail-header-flex">
             <div>
               <span style={{
                 display: 'inline-block', marginBottom: '0.5rem', fontSize: '0.75rem', fontWeight: 700, padding: '0.25rem 0.65rem',

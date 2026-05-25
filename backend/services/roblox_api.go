@@ -288,8 +288,18 @@ func SearchRobloxGames(searchQuery string) ([]OmniSearchResult, error) {
 	encodedQuery := url.QueryEscape(searchQuery)
 	targetURL := fmt.Sprintf("https://apis.roblox.com/search-api/omni-search?searchQuery=%s&sessionId=%s&pageType=all", encodedQuery, sessionID)
 
+	req, err := http.NewRequest("GET", targetURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	cookie := os.Getenv("ROBLOSECURITY")
+	if cookie != "" {
+		req.Header.Set("Cookie", ".ROBLOSECURITY="+cookie)
+	}
+
 	waitForRateLimit()
-	resp, err := http.Get(targetURL)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -356,4 +366,3 @@ func GetUniverseDetails(universeID uint64) (string, string, uint64, error) {
 
 	return res.Data[0].Name, res.Data[0].Description, res.Data[0].RootPlaceId, nil
 }
-

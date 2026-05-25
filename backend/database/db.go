@@ -15,6 +15,9 @@ import (
 var DB *gorm.DB
 
 func ConnectDB() {
+	// Force Go runtime's local timezone to WIB (Western Indonesian Time / Asia/Jakarta / UTC+7)
+	time.Local = time.FixedZone("WIB", 7*60*60)
+
 	host := os.Getenv("DB_HOST")
 	user := os.Getenv("DB_USER")
 	password := os.Getenv("DB_PASSWORD")
@@ -37,7 +40,7 @@ func ConnectDB() {
 		port = "5432"
 	}
 
-	defaultDsn := fmt.Sprintf("host=%s user=%s password=%s dbname=postgres port=%s sslmode=disable TimeZone=UTC",
+	defaultDsn := fmt.Sprintf("host=%s user=%s password=%s dbname=postgres port=%s sslmode=disable TimeZone=Asia/Jakarta",
 		host, user, password, port)
 
 	defaultDB, err := gorm.Open(postgres.Open(defaultDsn), &gorm.Config{
@@ -59,7 +62,7 @@ func ConnectDB() {
 		log.Printf("Warning: failed to connect to default postgres db to ensure creation: %v", err)
 	}
 
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=UTC",
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Jakarta",
 		host, user, password, dbname, port)
 
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{

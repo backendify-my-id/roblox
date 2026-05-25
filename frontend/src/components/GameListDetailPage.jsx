@@ -7,6 +7,7 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
   const [list, setList] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showInvitePanel, setShowInvitePanel] = useState(false);
   const [editEntry, setEditEntry] = useState(null);
@@ -124,17 +125,52 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
     }
   };
 
+  const parseRobloxLink = (link) => {
+    if (!link || !link.trim()) return { place_id: null, url_path: '' };
+    const trimmed = link.trim();
+    let pathname = '';
+    try {
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        const urlObj = new URL(trimmed);
+        pathname = urlObj.pathname;
+      } else {
+        pathname = trimmed.startsWith('/') ? trimmed : '/' + trimmed;
+      }
+    } catch (e) {
+      pathname = trimmed;
+    }
+    const match = pathname.match(/\/games\/(\d+)/);
+    let placeId = null;
+    if (match && match[1]) {
+      placeId = Number(match[1]);
+    }
+    const matchGames = pathname.match(/\/games\/(\d+)[^\s]*/);
+    let urlPath = '';
+    if (matchGames) {
+      urlPath = matchGames[0];
+    }
+    return { place_id: placeId, url_path: urlPath };
+  };
+
   useEffect(() => { fetchList(); }, [listId]);
 
   const handleAddEntry = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) return;
     setSubmitting(true);
+
+    let finalForm = { ...form };
+    if ((!finalForm.universe_id || !finalForm.place_id) && finalForm.roblox_link) {
+      const parsed = parseRobloxLink(finalForm.roblox_link);
+      if (parsed.place_id) finalForm.place_id = parsed.place_id;
+      if (parsed.url_path) finalForm.url_path = parsed.url_path;
+    }
+
     try {
       const res = await fetchWithAuth(`/api/lists/${listId}/entries`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(finalForm),
       });
       if (!res.ok) throw new Error();
       showToast('Game berhasil ditambahkan! 🎮', 'success');
@@ -151,11 +187,19 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
   const handleUpdateEntry = async (e) => {
     e.preventDefault();
     setSubmitting(true);
+
+    let finalForm = { ...form };
+    if ((!finalForm.universe_id || !finalForm.place_id) && finalForm.roblox_link) {
+      const parsed = parseRobloxLink(finalForm.roblox_link);
+      if (parsed.place_id) finalForm.place_id = parsed.place_id;
+      if (parsed.url_path) finalForm.url_path = parsed.url_path;
+    }
+
     try {
       const res = await fetchWithAuth(`/api/lists/${listId}/entries/${editEntry.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(finalForm),
       });
       if (!res.ok) throw new Error();
       showToast('Game berhasil diupdate!', 'success');
@@ -230,9 +274,12 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
     fontSize: '0.9rem', outline: 'none', fontFamily: 'Inter, sans-serif',
   };
 
-  const filteredEntries = (list?.entries || []).filter(e =>
-    statusFilter === 'all' ? true : e.status === statusFilter
-  );
+  const filteredEntries = (list?.entries || []).filter(e => {
+    const matchesStatus = statusFilter === 'all' ? true : e.status === statusFilter;
+    const gameName = e.roblox_map?.name || '';
+    const matchesSearch = gameName.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesStatus && matchesSearch;
+  });
 
   const toPlayCount = (list?.entries || []).filter(e => e.status === 'to_play').length;
   const playedCount = (list?.entries || []).filter(e => e.status === 'played').length;
@@ -245,29 +292,18 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-dark)', padding: '2rem' }}>
-      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+    <div className="lists-page-container">
+      <div className="lists-page-content">
         {/* Back button */}
-        <button onClick={onBack} style={{
-          display: 'flex', alignItems: 'center', gap: '0.4rem',
-          background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-          fontSize: '0.9rem', marginBottom: '1.5rem', padding: 0,
-        }}
-          onMouseOver={e => e.currentTarget.style.color = '#f8fafc'}
-          onMouseOut={e => e.currentTarget.style.color = 'var(--text-muted)'}
-        >
+        <button onClick={onBack} className="back-button">
           ← Kembali ke Daftar List
         </button>
 
         {/* List Header */}
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1)), var(--bg-card)',
-          borderRadius: '1.25rem', padding: '1.75rem 2rem', marginBottom: '2rem',
-          border: '1px solid rgba(255,255,255,0.07)',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-            <div>
-              <h1 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div className="list-detail-header-card">
+          <div className="list-detail-header-flex">
+            <div className="list-detail-info">
+              <h1 className="list-detail-title">
                 🎮 {list?.name}
                 {isOwner && (
                   <button
@@ -299,7 +335,7 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div className="list-detail-actions">
               <button
                 onClick={() => setShowInvitePanel(v => !v)}
                 style={{
@@ -374,37 +410,84 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
         </div>
 
         {/* Stats + Filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-          {['all', 'to_play', 'played'].map(f => (
-            <button
-              key={f}
-              onClick={() => setStatusFilter(f)}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            {['all', 'to_play', 'played'].map(f => (
+              <button
+                key={f}
+                onClick={() => setStatusFilter(f)}
+                style={{
+                  padding: '0.45rem 1rem', borderRadius: '9999px', border: '1px solid',
+                  borderColor: statusFilter === f ? 'transparent' : '#334155',
+                  background: statusFilter === f
+                    ? f === 'played' ? 'linear-gradient(135deg, #10b981, #3b82f6)'
+                      : f === 'to_play' ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
+                      : 'linear-gradient(135deg, #3b82f6, #8b5cf6)'
+                    : 'transparent',
+                  color: statusFilter === f ? '#fff' : '#94a3b8',
+                  cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500,
+                  transition: 'all 0.2s',
+                }}
+              >
+                {f === 'all' ? `Semua (${(list?.entries || []).length})` : f === 'to_play' ? `📋 Rencana (${toPlayCount})` : `✅ Dimainkan (${playedCount})`}
+              </button>
+            ))}
+          </div>
+
+          {/* Search Box */}
+          <div className="search-container" style={{ maxWidth: '300px', flex: '1 1 200px' }}>
+            <span className="search-icon">🔍</span>
+            <input
+              type="text"
+              placeholder="Cari game di list ini..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               style={{
-                padding: '0.45rem 1rem', borderRadius: '9999px', border: '1px solid',
-                borderColor: statusFilter === f ? 'transparent' : '#334155',
-                background: statusFilter === f
-                  ? f === 'played' ? 'linear-gradient(135deg, #10b981, #3b82f6)'
-                    : f === 'to_play' ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
-                    : 'linear-gradient(135deg, #3b82f6, #8b5cf6)'
-                  : 'transparent',
-                color: statusFilter === f ? '#fff' : '#94a3b8',
-                cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500,
-                transition: 'all 0.2s',
+                width: '100%',
+                padding: '0.5rem 2.5rem 0.5rem 2.5rem',
+                borderRadius: '0.5rem',
+                border: '1px solid var(--border)',
+                background: 'var(--bg-card)',
+                color: '#fff',
+                fontSize: '0.9rem'
               }}
-            >
-              {f === 'all' ? `Semua (${(list?.entries || []).length})` : f === 'to_play' ? `📋 Rencana (${toPlayCount})` : `✅ Dimainkan (${playedCount})`}
-            </button>
-          ))}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                style={{
+                  position: 'absolute',
+                  right: '0.75rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0.2rem'
+                }}
+                title="Hapus pencarian"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Entries Grid */}
         {filteredEntries.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon">{statusFilter === 'played' ? '🏆' : '📋'}</div>
+            <div className="empty-state-icon">{searchQuery ? '🔎' : (statusFilter === 'played' ? '🏆' : '📋')}</div>
             <h3 style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-              {statusFilter === 'played' ? 'Belum ada game yang dimainkan' : 'Belum ada game dalam rencana'}
+              {searchQuery ? 'Tidak ada game ditemukan' : (statusFilter === 'played' ? 'Belum ada game yang dimainkan' : 'Belum ada game dalam rencana')}
             </h3>
-            <p style={{ fontSize: '0.9rem' }}>Tambahkan game Roblox yang ingin dimainkan bersama!</p>
+            <p style={{ fontSize: '0.9rem' }}>
+              {searchQuery ? 'Coba cari dengan kata kunci lain.' : 'Tambahkan game Roblox yang ingin dimainkan bersama!'}
+            </p>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>

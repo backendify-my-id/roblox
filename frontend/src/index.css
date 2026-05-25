@@ -463,3 +463,549 @@ body {
 .logs-table td {
   font-size: 0.95rem;
 }
+
+/* ==========================================================================
+   ✨ PREMIUM RESPONSIVE DESIGN SYSTEM & CUSTOM UTILITY CLASSES ✨
+   Governs: Mobile, Tablet, Laptop, Desktop Layout Adaptation
+   ========================================================================== */
+
+/* --- Desktop Defaults for Structural Components --- */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 2rem;
+  background: rgba(20, 27, 45, 0.7);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  margin-bottom: 1rem;
+  font-family: 'Outfit', sans-serif;
+  transition: all 0.3s ease;
+}
+
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+}
+
+.logo-emoji {
+  font-size: 1.5rem;
+}
+
+.logo-text {
+  font-weight: 800;
+  font-size: 1.25rem;
+  background: linear-gradient(to right, #ec4899, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.02em;
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Dashboard Header */
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  gap: 2rem;
+}
+
+.header-info {
+  flex: 1;
+}
+
+.header-title {
+  background: linear-gradient(to right, #ec4899, #8b5cf6);
+  -webkit-background-clip: text;
+  color: transparent;
+  font-size: 2.5rem;
+  margin: 0;
+  font-weight: 800;
+}
+
+.header-desc {
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.header-user-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--bg-card);
+  padding: 0.75rem 1.5rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.user-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+  flex-wrap: wrap;
+}
+
+/* Lists Page Structure */
+.lists-page-container {
+  min-height: 100vh;
+  background: var(--bg-dark);
+  padding: 2rem;
+}
+
+.lists-page-content {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+  padding: 0;
+  transition: color 0.2s ease;
+}
+
+.back-button:hover {
+  color: #f8fafc;
+}
+
+/* Lists Page Header */
+.lists-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2.5rem;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.lists-header-info {
+  flex: 1;
+  min-width: 300px;
+}
+
+.lists-header-title {
+  font-size: 2.2rem;
+  font-weight: 800;
+  background: linear-gradient(to right, #ec4899, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 0.35rem;
+  letter-spacing: -0.01em;
+}
+
+.lists-header-desc {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.lists-header-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* List Detail Header Card */
+.list-detail-header-card {
+  background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1)), var(--bg-card);
+  border-radius: 1.25rem;
+  padding: 1.75rem 2rem;
+  margin-bottom: 2rem;
+  border: 1px solid rgba(255,255,255,0.07);
+}
+
+.list-detail-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.list-detail-info {
+  flex: 1;
+  min-width: 300px;
+}
+
+.list-detail-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.list-detail-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* Entry Detail Header Card */
+.entry-detail-header-card {
+  background: linear-gradient(135deg, rgba(139,92,246,0.12), rgba(16,185,129,0.12)), var(--bg-card);
+  border-radius: 1.25rem;
+  padding: 1.75rem 2rem;
+  margin-bottom: 2rem;
+  border: 1px solid rgba(255,255,255,0.07);
+}
+
+.entry-detail-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+/* Admin Panel Header */
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.admin-header-title-container {
+  flex: 1;
+  min-width: 280px;
+}
+
+.admin-header-title {
+  background: linear-gradient(to right, #ef4444, #f59e0b);
+  -webkit-background-clip: text;
+  color: transparent;
+  font-size: 2.5rem;
+  margin: 0;
+  font-weight: 800;
+}
+
+.admin-header-subtitle {
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.admin-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* Admin Tabs Scrolling Container */
+.admin-tabs {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1rem;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Hide standard Firefox scrollbar */
+}
+
+.admin-tabs::-webkit-scrollbar {
+  display: none; /* Hide Chrome/Safari scrollbar */
+}
+
+.admin-tabs button {
+  flex-shrink: 0;
+}
+
+/* --- Premium Responsive Media Queries (Mobile, Tablet, Laptop, Desktop) --- */
+
+/* Laptop & Desktop Small (max-width: 1200px) */
+@media (max-width: 1200px) {
+  .app-container {
+    max-width: 100%;
+    padding: 1.5rem;
+  }
+}
+
+/* Tablet Layout (max-width: 1024px) */
+@media (max-width: 1024px) {
+  .friends-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.25rem;
+  }
+  
+  .navbar {
+    padding: 1rem 1.5rem;
+  }
+  
+  .dashboard-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1.5rem;
+  }
+  
+  .header-user-card {
+    width: 100%;
+  }
+  
+  .admin-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1.5rem;
+  }
+  
+  .admin-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  
+  .lists-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1.5rem;
+  }
+  
+  .lists-header-actions {
+    width: 100%;
+  }
+  
+  .lists-header-actions button {
+    flex: 1;
+    text-align: center;
+    justify-content: center;
+  }
+}
+
+/* Mobile Layout (max-width: 768px) */
+@media (max-width: 768px) {
+  .app-container {
+    padding: 1rem;
+  }
+  
+  .navbar {
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+    align-items: stretch;
+    text-align: center;
+    border-radius: 0 0 1rem 1rem;
+  }
+  
+  .nav-logo {
+    justify-content: center;
+  }
+  
+  .nav-actions {
+    justify-content: center;
+    width: 100%;
+    gap: 0.4rem;
+  }
+  
+  .nav-actions button {
+    flex: 1;
+    justify-content: center;
+    padding: 0.5rem 0.6rem !important;
+    font-size: 0.8rem !important;
+    border-radius: 0.5rem !important;
+  }
+  
+  .header-title {
+    font-size: 1.8rem !important;
+    text-align: center;
+  }
+  
+  .header-desc {
+    font-size: 0.95rem;
+    text-align: center;
+  }
+  
+  .header-user-card {
+    flex-direction: column;
+    text-align: center;
+    padding: 1.25rem 1rem;
+  }
+  
+  .header-user-card img {
+    margin: 0 auto;
+  }
+  
+  .user-actions {
+    justify-content: center;
+  }
+  
+  .user-actions button {
+    flex: 1;
+    text-align: center;
+  }
+  
+  .add-friend-form {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .btn-primary {
+    width: 100%;
+  }
+  
+  /* Modals */
+  .modal-content {
+    width: 95%;
+    padding: 1.5rem 1rem;
+    max-height: 90vh;
+  }
+  
+  .modal-header h2 {
+    font-size: 1.3rem;
+  }
+  
+  /* Tables and logs inside admin dashboard */
+  .logs-table, 
+  table {
+    display: block !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  
+  /* List Detail Header Card */
+  .list-detail-header-card {
+    padding: 1.25rem 1rem;
+  }
+  
+  .list-detail-header-flex {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1.25rem;
+  }
+  
+  .list-detail-actions {
+    width: 100%;
+  }
+  
+  .list-detail-actions button {
+    flex: 1;
+    justify-content: center;
+    text-align: center;
+  }
+  
+  /* Lists Page Container */
+  .lists-page-container {
+    padding: 1rem;
+  }
+  
+  .lists-header-title {
+    font-size: 1.8rem !important;
+    text-align: center;
+  }
+  
+  .lists-header-desc {
+    font-size: 0.9rem;
+    text-align: center;
+  }
+  
+  /* Admin Header */
+  .admin-header-title {
+    font-size: 1.8rem !important;
+    text-align: center;
+  }
+  
+  .admin-header-subtitle {
+    font-size: 0.95rem;
+    text-align: center;
+  }
+  
+  .admin-header-actions {
+    width: 100%;
+  }
+  
+  .admin-header-actions button, 
+  .admin-header-actions label {
+    flex: 1;
+    justify-content: center;
+    font-size: 0.8rem !important;
+    padding: 0.5rem 0.75rem !important;
+  }
+  
+  /* Entry Detail Header Card */
+  .entry-detail-header-card {
+    padding: 1.25rem 1rem;
+  }
+  
+  .entry-detail-header-flex {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1.25rem;
+  }
+  
+  .entry-detail-header-flex div {
+    text-align: left !important;
+  }
+}
+
+/* Small Mobile Screen Layout (max-width: 480px) */
+@media (max-width: 480px) {
+  .friends-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .nav-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+  }
+  
+  .nav-actions button:last-child {
+    grid-column: span 2;
+    margin-left: 0 !important;
+  }
+  
+  .user-actions {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .user-actions button {
+    width: 100%;
+  }
+  
+  .header-title {
+    font-size: 1.5rem !important;
+  }
+  
+  .lists-header-title {
+    font-size: 1.5rem !important;
+  }
+  
+  .admin-header-title {
+    font-size: 1.5rem !important;
+  }
+  
+  .list-detail-title {
+    font-size: 1.4rem !important;
+  }
+}

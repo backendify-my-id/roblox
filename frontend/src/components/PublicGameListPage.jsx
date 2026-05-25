@@ -2,13 +2,50 @@ import React, { useState, useEffect } from 'react';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:7000';
 
-export default function PublicGameListPage({ shareToken, onBack }) {
+export default function PublicGameListPage({ shareToken, onBack, onImportSuccess, showToast }) {
   const [list, setList] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [lightbox, setLightbox] = useState(null); // { mediaList: [], index: 0 }
   const [viewingReviews, setViewingReviews] = useState(null); // entry being viewed for reviews
+  const [isImporting, setIsImporting] = useState(false);
+
+  const handleImport = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Silakan login terlebih dahulu untuk mengimpor daftar game ini ke akun Anda!');
+      return;
+    }
+
+    if (!confirm(`Impor daftar game "${list?.name || 'ini'}" ke akun Anda?`)) return;
+
+    setIsImporting(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/lists/import/${shareToken}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Gagal mengimpor daftar game.');
+      }
+      
+      if (showToast) showToast('Daftar game berhasil diimpor ke akun Anda! 🎮', 'success');
+      if (onImportSuccess) {
+        onImportSuccess();
+      }
+    } catch (err) {
+      if (showToast) showToast(err.message, 'error');
+      else alert(err.message);
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   useEffect(() => {
     const fetchPublicList = async () => {
@@ -81,6 +118,47 @@ export default function PublicGameListPage({ shareToken, onBack }) {
             <span>Dibuat oleh <strong style={{ color: '#f8fafc' }}>{list.owner?.roblox_display_name || list.owner?.roblox_username}</strong></span>
             <span>•</span>
             <span>👥 {list.members?.length} anggota</span>
+          </div>
+
+          <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={handleImport}
+              disabled={isImporting}
+              style={{
+                padding: '0.5rem 1.2rem',
+                borderRadius: '0.5rem',
+                border: 'none',
+                background: 'linear-gradient(135deg, #ec4899, #8b5cf6)',
+                color: '#fff',
+                fontWeight: 'bold',
+                cursor: isImporting ? 'not-allowed' : 'pointer',
+                fontSize: '0.85rem',
+                boxShadow: '0 4px 10px rgba(236,72,153,0.25)',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={e => { if(!isImporting) e.currentTarget.style.transform = 'translateY(-1px)'; }}
+              onMouseOut={e => { if(!isImporting) e.currentTarget.style.transform = 'translateY(0)'; }}
+            >
+              {isImporting ? 'Mengimpor...' : '✨ Impor List ke Akun Saya'}
+            </button>
+            
+            <button
+              onClick={onBack}
+              style={{
+                padding: '0.5rem 1.2rem',
+                borderRadius: '0.5rem',
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(255,255,255,0.05)',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={e => e.currentTarget.style.color = '#fff'}
+              onMouseOut={e => e.currentTarget.style.color = '#94a3b8'}
+            >
+              Kembali
+            </button>
           </div>
 
           <span style={{

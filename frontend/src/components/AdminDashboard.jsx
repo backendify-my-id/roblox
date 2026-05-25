@@ -967,16 +967,16 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
 
   return (
     <div className="app-container">
-      <div className="header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
-        <div>
-          <h1 style={{ background: 'linear-gradient(to right, #ef4444, #f59e0b)', WebkitBackgroundClip: 'text', color: 'transparent', fontSize: '2.5rem', margin: 0 }}>
+      <div className="admin-header">
+        <div className="admin-header-title-container">
+          <h1 className="admin-header-title">
             Admin Panel
           </h1>
-          <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+          <p className="admin-header-subtitle">
             Manajemen Pengguna & Database Sistem
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div className="admin-header-actions">
           {user.role === 'admin' && (
             <>
               <button
@@ -1020,7 +1020,7 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
       </div>
 
       {/* Sub Navigation Tabs */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
+      <div className="admin-tabs">
         {hasViewUsers && (
           <button
             onClick={() => setActiveView('users')}

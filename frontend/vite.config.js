@@ -73,10 +73,13 @@ export default defineConfig({
     })
   ],
   server: {
+    host: true,
     allowedHosts: [
       "localhost",
       "192.168.1.11",
-      "roblox.backendify.my.id"
+      "roblox.backendify.my.id",
+      "http://192.168.1.200:5173",
+      "http://192.168.1.200:7000"
     ]
   },
 })
