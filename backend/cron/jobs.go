@@ -62,32 +62,32 @@ func syncAllFriends() {
 	for idx, user := range users {
 		checkKey := fmt.Sprintf("last_name_check:%d", user.ID)
 		checkNames := false
-		
+
 		_, err := cache.RDB.Get(cache.Ctx, checkKey).Result()
 		if err != nil { // key doesn't exist or expired
 			checkNames = true
 		}
-		
-		LogCron("INFO", "[FriendsSync] [%d/%d] Starting sync for user '%s' (RobloxUserID: %s, CheckNames: %t)", 
+
+		LogCron("INFO", "[FriendsSync] [%d/%d] Starting sync for user '%s' (RobloxUserID: %s, CheckNames: %t)",
 			idx+1, len(users), user.RobloxUsername, user.RobloxUserID, checkNames)
 
 		if err := services.SyncUserFriends(user.ID, user.RobloxUserID, checkNames); err != nil {
-			LogCron("ERROR", "[FriendsSync] [%d/%d] Error syncing friends for user '%s': %v", 
+			LogCron("ERROR", "[FriendsSync] [%d/%d] Error syncing friends for user '%s': %v",
 				idx+1, len(users), user.RobloxUsername, err)
 			failCount++
 		} else {
-			LogCron("INFO", "[FriendsSync] [%d/%d] Successfully synced friends for user '%s'.", 
+			LogCron("INFO", "[FriendsSync] [%d/%d] Successfully synced friends for user '%s'.",
 				idx+1, len(users), user.RobloxUsername)
 			successCount++
 			if checkNames {
 				// Update the check time on success with a 1-hour TTL
 				cache.RDB.Set(cache.Ctx, checkKey, "done", 1*time.Hour)
-				LogCron("INFO", "[FriendsSync] [%d/%d] Set last_name_check key for '%s' in Redis with 1-hour TTL.", 
+				LogCron("INFO", "[FriendsSync] [%d/%d] Set last_name_check key for '%s' in Redis with 1-hour TTL.",
 					idx+1, len(users), user.RobloxUsername)
 			}
 		}
 	}
-	
+
 	duration := time.Since(startTime)
 	LogCron("INFO", "[FriendsSync] Completed. Success: %d, Failed: %d, Duration: %v", successCount, failCount, duration)
 }
@@ -135,7 +135,7 @@ func syncAllPresences() {
 	if err := database.DB.Preload("StealthExempts").Where("is_stealth = ?", true).Find(&stealthUsers).Error; err != nil {
 		LogCron("ERROR", "[PresenceSync] Failed to fetch stealth users: %v", err)
 	}
-	
+
 	// stealthMap[AdminRobloxID][ViewerUserID] = true (means viewer CAN bypass)
 	stealthMap := make(map[string]map[uint]bool)
 	for _, su := range stealthUsers {
@@ -145,7 +145,7 @@ func syncAllPresences() {
 		}
 		stealthMap[su.RobloxUserID] = exempts
 	}
-	
+
 	if len(stealthMap) > 0 {
 		LogCron("INFO", "[PresenceSync] [Stealth] Loaded %d active stealth users configuration into memory.", len(stealthMap))
 	}
@@ -163,7 +163,7 @@ func syncAllPresences() {
 		}
 	}
 
-	LogCron("INFO", "[PresenceSync] Deduplicated active friend targets count: %d (original linkages: %d)", 
+	LogCron("INFO", "[PresenceSync] Deduplicated active friend targets count: %d (original linkages: %d)",
 		len(uniqueIDs), len(friends))
 
 	// Batch into max 100 per request
@@ -177,7 +177,7 @@ func syncAllPresences() {
 		}
 		batch := uniqueIDs[i:end]
 
-		LogCron("INFO", "[PresenceSync] [API Request] Fetching presence for batch [%d-%d] (size: %d)...", 
+		LogCron("INFO", "[PresenceSync] [API Request] Fetching presence for batch [%d-%d] (size: %d)...",
 			i, end, len(batch))
 
 		pData, err := services.GetPresences(batch)
@@ -186,7 +186,7 @@ func syncAllPresences() {
 			continue
 		}
 
-		LogCron("INFO", "[PresenceSync] [API Response] Successfully received presence data for batch [%d-%d] (received details: %d)", 
+		LogCron("INFO", "[PresenceSync] [API Response] Successfully received presence data for batch [%d-%d] (received details: %d)",
 			i, end, len(pData))
 
 		for k, v := range pData {
@@ -245,8 +245,8 @@ func syncAllPresences() {
 					IsStealth: isStealth,
 				}
 				database.DB.Create(&newLog)
-				
-				LogCron("INFO", "[PresenceSync] [Change Detected] User '%s' (RobloxUserID: %d) status changed from '%s' (%s) to '%s' (%s). Logged new activity record (Stealth: %t).", 
+
+				LogCron("INFO", "[PresenceSync] [Change Detected] User '%s' (RobloxUserID: %d) status changed from '%s' (%s) to '%s' (%s). Logged new activity record (Stealth: %t).",
 					f.TargetUser.RobloxUsername, rID, oldPresence, oldGame, statusStr, p.LastLocation, isStealth)
 				changeCount++
 
@@ -372,79 +372,14 @@ func syncAllPresences() {
 						}
 					}
 				}
-				
+
 				updatedUserIDs[f.TargetUser.ID] = true
 			}
 		}
 	}
-	
+
 	duration := time.Since(startTime)
-	LogCron("INFO", "[PresenceSync] Completed. Total processed: %d targets, Status changes detected: %d, Duration: %v", 
+	LogCron("INFO", "[PresenceSync] Completed. Total processed: %d targets, Status changes detected: %d, Duration: %v",
 		len(friends), changeCount, duration)
 
-	// Backfill missing avatars in database using remaining API hits budget
-	backfillMissingAvatars()
-}
-
-func backfillMissingAvatars() {
-	remainingHits := services.GetRemainingHits()
-	if remainingHits < 5 {
-		LogCron("INFO", "[BackfillAvatars] Skipped: only %d API hits remaining in current window.", remainingHits)
-		return
-	}
-
-	var usersWithoutAvatar []models.User
-	// Query up to 100 users who don't have an avatar URL
-	if err := database.DB.Where("(avatar_url = '' OR avatar_url IS NULL) AND roblox_user_id != ''").Limit(100).Find(&usersWithoutAvatar).Error; err != nil {
-		LogCron("ERROR", "[BackfillAvatars] Failed to query users without avatar: %v", err)
-		return
-	}
-
-	if len(usersWithoutAvatar) == 0 {
-		LogCron("INFO", "[BackfillAvatars] No users found without avatar. Everything is fully populated.")
-		return
-	}
-
-	LogCron("INFO", "[BackfillAvatars] Found %d users without avatar. Proceeding to backfill using remaining API hits (Current remaining: %d)...", len(usersWithoutAvatar), remainingHits)
-
-	var robloxIDs []uint64
-	idToUserMap := make(map[uint64]*models.User)
-
-	for i := range usersWithoutAvatar {
-		u := &usersWithoutAvatar[i]
-		rID, err := strconv.ParseUint(u.RobloxUserID, 10, 64)
-		if err == nil {
-			robloxIDs = append(robloxIDs, rID)
-			idToUserMap[rID] = u
-		}
-	}
-
-	if len(robloxIDs) == 0 {
-		return
-	}
-
-	avatarMap, err := services.GetAvatars(robloxIDs)
-	if err != nil {
-		LogCron("ERROR", "[BackfillAvatars] Failed to fetch avatars from Roblox: %v", err)
-		return
-	}
-
-	updatedCount := 0
-	for rID, avatarURL := range avatarMap {
-		if avatarURL != "" {
-			if u, exists := idToUserMap[rID]; exists {
-				u.AvatarURL = avatarURL
-				database.DB.Save(u)
-				
-				// Broadcast websocket profile update so UI updates in real-time!
-				services.Hub.Broadcast(services.WSMessage{
-					Type:   "profile_update",
-					UserID: u.ID,
-				})
-				updatedCount++
-			}
-		}
-	}
-
-	LogCron("INFO", "[BackfillAvatars] Successfully backfilled avatars for %d/%d users.", updatedCount, len(usersWithoutAvatar))
 }

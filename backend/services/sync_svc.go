@@ -8,6 +8,7 @@ import (
 
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
+	"github.com/apany/roblox-friend-tracker/utils"
 )
 
 func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
@@ -69,8 +70,6 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 			rfDisplayName = n.DisplayName
 		}
 
-		ef, exists := efMap[fIDStr]
-		isReadded := exists && ef.Status == "removed"
 
 		var targetUser models.User
 		if err := database.DB.Where("roblox_user_id = ?", fIDStr).First(&targetUser).Error; err != nil {
@@ -84,17 +83,15 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 			database.DB.Create(&targetUser)
 		} else {
 			changed := false
-			if checkNames || isReadded {
-				if rfName != "" && targetUser.RobloxUsername != rfName {
-					logChange(targetUser.ID, userID, targetUser.RobloxUsername, "username", targetUser.RobloxUsername, rfName, targetUser.IsStealth)
-					targetUser.RobloxUsername = rfName
-					changed = true
-				}
-				if rfDisplayName != "" && targetUser.RobloxDisplayName != rfDisplayName {
-					logChange(targetUser.ID, userID, targetUser.RobloxUsername, "display_name", targetUser.RobloxDisplayName, rfDisplayName, targetUser.IsStealth)
-					targetUser.RobloxDisplayName = rfDisplayName
-					changed = true
-				}
+			if rfName != "" && targetUser.RobloxUsername != rfName {
+				logChange(targetUser.ID, userID, targetUser.RobloxUsername, "username", targetUser.RobloxUsername, rfName, targetUser.IsStealth)
+				targetUser.RobloxUsername = rfName
+				changed = true
+			}
+			if rfDisplayName != "" && targetUser.RobloxDisplayName != rfDisplayName {
+				logChange(targetUser.ID, userID, targetUser.RobloxUsername, "display_name", targetUser.RobloxDisplayName, rfDisplayName, targetUser.IsStealth)
+				targetUser.RobloxDisplayName = rfDisplayName
+				changed = true
 			}
 			if avatars[rf.Id] != "" && targetUser.AvatarURL != avatars[rf.Id] {
 				logChange(targetUser.ID, userID, targetUser.RobloxUsername, "avatar", targetUser.AvatarURL, avatars[rf.Id], targetUser.IsStealth)
@@ -182,7 +179,7 @@ func logChange(targetUserID uint, ownerID uint, username, changeType, oldVal, ne
 		IsStealth:  isStealth,
 	}
 	database.DB.Create(&dbLog)
-	log.Printf("[Profile] Change detected for %s (ID %d): %s changed from '%s' to '%s' (stealth=%t)\n", username, targetUserID, changeType, oldVal, newVal, isStealth)
+	utils.LogCron("INFO", "[Profile] Change detected for %s (ID %d): %s changed from '%s' to '%s' (stealth=%t)", username, targetUserID, changeType, oldVal, newVal, isStealth)
 
 	// Deteksi Shadow Activity secara Real-Time dengan threshold 20 menit
 	if changeType == "avatar" {
@@ -200,7 +197,7 @@ func logChange(targetUserID uint, ownerID uint, username, changeType, oldVal, ne
 
 				if err != nil {
 					// Tidak ada log Offline sama sekali — skip, data tidak cukup
-					log.Printf("[ShadowActivity] Skipped for %s (ID %d): no Offline log found\n", username, targetUserID)
+					utils.LogCron("WARNING", "[ShadowActivity] Skipped for %s (ID %d): no Offline log found", username, targetUserID)
 					return
 				}
 
@@ -216,10 +213,10 @@ func logChange(targetUserID uint, ownerID uint, username, changeType, oldVal, ne
 						AdminNotes: "",
 					}
 					database.DB.Create(&shadowAct)
-					log.Printf("[ShadowActivity] Stealth online detected! User %s (ID %d) changed avatar while offline for %.0f minutes!\n",
+					utils.LogCron("WARNING", "[ShadowActivity] Stealth online detected! User %s (ID %d) changed avatar while offline for %.0f minutes!",
 						username, targetUserID, offlineDuration.Minutes())
 				} else {
-					log.Printf("[ShadowActivity] Avatar change for %s (ID %d) skipped — offline only %.0f min (threshold: %d min)\n",
+					utils.LogCron("INFO", "[ShadowActivity] Avatar change for %s (ID %d) skipped — offline only %.0f min (threshold: %d min)",
 						username, targetUserID, offlineDuration.Minutes(), int(shadowThreshold.Minutes()))
 				}
 			}

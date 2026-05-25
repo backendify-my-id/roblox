@@ -286,6 +286,21 @@ func GetProfileChangeLogs(c *fiber.Ctx) error {
 	}
 	var activeRanges []DateRange
 	var currentStart *time.Time
+
+	// Jika tidak ada event "First Added" atau "Added Again" di ActivityLog,
+	// gunakan friend.CreatedAt sebagai start default agar riwayat tetap tampil.
+	hasStartEvent := false
+	for _, e := range events {
+		if e.Status == "First Added" || e.Status == "Added Again" {
+			hasStartEvent = true
+			break
+		}
+	}
+	if !hasStartEvent {
+		t := friend.CreatedAt
+		currentStart = &t
+	}
+
 	for _, e := range events {
 		switch e.Status {
 		case "First Added", "Added Again":
@@ -302,6 +317,10 @@ func GetProfileChangeLogs(c *fiber.Ctx) error {
 	if currentStart != nil {
 		// Masih aktif saat ini
 		activeRanges = append(activeRanges, DateRange{Start: *currentStart, End: nil})
+	}
+
+	if len(activeRanges) == 0 && friend.Status == "active" {
+		activeRanges = append(activeRanges, DateRange{Start: friend.CreatedAt, End: nil})
 	}
 
 	if len(activeRanges) == 0 {

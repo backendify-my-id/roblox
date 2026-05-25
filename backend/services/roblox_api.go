@@ -166,37 +166,50 @@ func GetFriends(userId uint64) ([]FriendData, error) {
 }
 
 func GetAvatars(userIds []uint64) (map[uint64]string, error) {
-	if len(userIds) == 0 {
-		return make(map[uint64]string), nil
-	}
-
-	// Batch request max 100
-	idStrs := make([]string, len(userIds))
-	for i, id := range userIds {
-		idStrs[i] = fmt.Sprintf("%d", id)
-	}
-
-	url := fmt.Sprintf("https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=%s&size=150x150&format=Png&isCircular=false", strings.Join(idStrs, ","))
-	waitForRateLimit()
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to fetch avatars: %d, %s", resp.StatusCode, string(b))
-	}
-
-	var res AvatarResponse
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		return nil, err
-	}
-
 	avatarMap := make(map[uint64]string)
-	for _, d := range res.Data {
-		avatarMap[d.TargetId] = d.ImageUrl
+	if len(userIds) == 0 {
+		return avatarMap, nil
+	}
+
+	batchSize := 100
+	for i := 0; i < len(userIds); i += batchSize {
+		end := i + batchSize
+		if end > len(userIds) {
+			end = len(userIds)
+		}
+		batch := userIds[i:end]
+
+		idStrs := make([]string, len(batch))
+		for idx, id := range batch {
+			idStrs[idx] = fmt.Sprintf("%d", id)
+		}
+
+		url := fmt.Sprintf("https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=%s&size=150x150&format=Png&isCircular=false", strings.Join(idStrs, ","))
+		waitForRateLimit()
+		resp, err := http.Get(url)
+		if err != nil {
+			log.Printf("[GetAvatars] HTTP error for batch: %v", err)
+			continue
+		}
+
+		if resp.StatusCode != 200 {
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			log.Printf("[GetAvatars] API returned %d for batch: %s", resp.StatusCode, string(b))
+			continue
+		}
+
+		var res AvatarResponse
+		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+			resp.Body.Close()
+			log.Printf("[GetAvatars] Decode error: %v", err)
+			continue
+		}
+		resp.Body.Close()
+
+		for _, d := range res.Data {
+			avatarMap[d.TargetId] = d.ImageUrl
+		}
 	}
 
 	return avatarMap, nil
