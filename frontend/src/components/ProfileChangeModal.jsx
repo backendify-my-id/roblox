@@ -46,7 +46,7 @@ const ProfileChangeModal = ({ friend, onClose }) => {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+      <div className="modal-content modal-content-large" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
         <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.5rem', marginBottom: '0.2rem' }}>Profile Changes</h2>

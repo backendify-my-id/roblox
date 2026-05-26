@@ -53,6 +53,7 @@ body {
   font-weight: 800;
   background: linear-gradient(to right, #ec4899, #8b5cf6);
   -webkit-background-clip: text;
+  background-clip: text;
   color: transparent;
   margin-bottom: 0.5rem;
   letter-spacing: -0.02em;
@@ -502,6 +503,7 @@ body {
   font-size: 1.25rem;
   background: linear-gradient(to right, #ec4899, #8b5cf6);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -0.02em;
 }
@@ -528,6 +530,7 @@ body {
 .header-title {
   background: linear-gradient(to right, #ec4899, #8b5cf6);
   -webkit-background-clip: text;
+  background-clip: text;
   color: transparent;
   font-size: 2.5rem;
   margin: 0;
@@ -612,6 +615,7 @@ body {
   font-weight: 800;
   background: linear-gradient(to right, #ec4899, #8b5cf6);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-bottom: 0.35rem;
   letter-spacing: -0.01em;
@@ -701,6 +705,7 @@ body {
 .admin-header-title {
   background: linear-gradient(to right, #ef4444, #f59e0b);
   -webkit-background-clip: text;
+  background-clip: text;
   color: transparent;
   font-size: 2.5rem;
   margin: 0;
@@ -722,26 +727,11 @@ body {
 
 /* --- Premium Modal and Responsive Helpers --- */
 
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
-  z-index: 999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-}
-
-.modal-content {
+.modal-content-large {
   background: #1e293b !important;
   width: 90% !important;
   max-width: 750px !important;
-  border-radius: 1rem !important;
+  border-radius: 1.5rem !important;
   padding: 1.5rem !important;
   max-height: 85vh !important;
   display: flex !important;
@@ -951,6 +941,12 @@ body {
   
   /* Modals */
   .modal-content {
+    width: 95% !important;
+    padding: 1rem !important;
+    max-height: 92vh !important;
+  }
+  
+  .modal-content-large {
     width: 95% !important;
     padding: 1rem !important;
     max-height: 92vh !important;
