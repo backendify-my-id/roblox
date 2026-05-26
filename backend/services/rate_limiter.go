@@ -38,22 +38,17 @@ func waitForRateLimit() {
 	if callCount >= 80 {
 		waitTime := time.Minute - time.Since(windowStart)
 		if waitTime > 0 {
-			utils.LogCron("WARNING", "[RateLimit] Hit 80 calls in window, sleeping %v", waitTime)
-			rateMu.Unlock()
+			utils.LogCron("WARNING", "[RateLimit] Hit 80 calls in window, sleeping %v to reset", waitTime)
 			time.Sleep(waitTime)
-			rateMu.Lock()
-			callCount = 0
-			windowStart = time.Now()
 		}
+		callCount = 0
+		windowStart = time.Now()
 	}
 
 	// Enforce minimum interval between requests
 	elapsed := time.Since(lastRequest)
 	if elapsed < minInterval {
-		sleepDur := minInterval - elapsed
-		rateMu.Unlock()
-		time.Sleep(sleepDur)
-		rateMu.Lock()
+		time.Sleep(minInterval - elapsed)
 	}
 
 	callCount++

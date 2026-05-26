@@ -57,8 +57,11 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
 
   // 2. Most Played Games
   const userGameCounts = filteredLogs.reduce((acc, log) => {
-    if (log.status === 'In-Game' && log.game_name) {
-      acc[log.game_name] = (acc[log.game_name] || 0) + 1;
+    if (log.status === 'In-Game') {
+      const gameName = (log.map && log.map.name) ? log.map.name : log.game_name;
+      if (gameName) {
+        acc[gameName] = (acc[gameName] || 0) + 1;
+      }
     }
     return acc;
   }, {});
@@ -104,6 +107,32 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
 
   // 5. Play Duration per Day of Week (in minutes)
   const userDayPlayMinutes = Array(7).fill(0);
+
+  const addPlayDuration = (start, end, maxMinutes = 180) => {
+    const diffMs = end - start;
+    const diffMins = Math.round(diffMs / 60000);
+    const finalMins = Math.min(diffMins, maxMinutes);
+    if (finalMins <= 0) return;
+
+    let adjustedEnd = end;
+    if (diffMins > finalMins) {
+      adjustedEnd = new Date(start.getTime() + finalMins * 60000);
+    }
+
+    let temp = new Date(start.getTime());
+    while (temp < adjustedEnd) {
+      const nextMidnight = new Date(temp);
+      nextMidnight.setHours(24, 0, 0, 0);
+
+      const limit = nextMidnight < adjustedEnd ? nextMidnight : adjustedEnd;
+      const mins = Math.round((limit - temp) / 60000);
+      if (mins > 0) {
+        userDayPlayMinutes[temp.getDay()] += mins;
+      }
+      temp = nextMidnight;
+    }
+  };
+
   const cronLogs = [...filteredLogs].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   let currentInGameStart = null;
   for (let i = 0; i < cronLogs.length; i++) {
@@ -114,26 +143,13 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
       }
     } else {
       if (currentInGameStart !== null) {
-        const endTime = new Date(log.created_at);
-        const diffMs = endTime - currentInGameStart;
-        const diffMins = Math.round(diffMs / 60000);
-        const finalMins = Math.min(diffMins, 180);
-        if (finalMins > 0) {
-          const day = currentInGameStart.getDay();
-          userDayPlayMinutes[day] += finalMins;
-        }
+        addPlayDuration(currentInGameStart, new Date(log.created_at));
         currentInGameStart = null;
       }
     }
   }
   if (currentInGameStart !== null) {
-    const diffMs = new Date() - currentInGameStart;
-    const diffMins = Math.round(diffMs / 60000);
-    const finalMins = Math.min(Math.max(diffMins, 0), 180);
-    if (finalMins > 0) {
-      const day = currentInGameStart.getDay();
-      userDayPlayMinutes[day] += finalMins;
-    }
+    addPlayDuration(currentInGameStart, new Date());
   }
   const userMaxDurationVal = Math.max(...userDayPlayMinutes);
 

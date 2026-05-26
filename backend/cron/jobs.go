@@ -263,24 +263,7 @@ func syncAllPresences() {
 				u.UpdatedAt = time.Now()
 				database.DB.Model(&u).Select("current_presence", "current_game_name", "updated_at").Updates(&u)
 
-				_, isStealth := stealthMap[u.RobloxUserID]
-
-				newLog := models.ActivityLog{
-					UserID:    u.ID,
-					Status:    statusStr,
-					GameName:  p.LastLocation,
-					IsStealth: isStealth,
-				}
-				database.DB.Create(&newLog)
-
-				LogCron("INFO", "[PresenceSync] [Change Detected] User '%s' (RobloxUserID: %d) status changed from '%s' (%s) to '%s' (%s). Logged new activity record (Stealth: %t).",
-					u.RobloxUsername, rID, oldPresence, oldGame, statusStr, p.LastLocation, isStealth)
-				changeCount++
-
-				services.Hub.Broadcast(services.WSMessage{
-					Type:   "presence_update",
-					UserID: u.ID,
-				})
+				var mapID *uint
 
 				// Auto-create or update map in database if the target is In-Game
 				if statusStr == "In-Game" && p.LastLocation != "" && p.LastLocation != "-" {
@@ -323,6 +306,7 @@ func syncAllPresences() {
 								existingMap.UpdatedAt = time.Now()
 								database.DB.Save(&existingMap)
 							}
+							mapID = &existingMap.ID
 						} else {
 							// Does not exist by UniverseID. Check if there is an existing manual entry with the same name and NO UniverseID
 							var nameMap models.RobloxMap
@@ -350,6 +334,7 @@ func syncAllPresences() {
 								nameMap.UpdatedAt = time.Now()
 								database.DB.Save(&nameMap)
 								LogCron("INFO", "[AutoMap] Linked UniverseID %d and PlaceID %d to manual map: '%s'", *p.UniverseId, *resolvedPlaceID, p.LastLocation)
+								mapID = &nameMap.ID
 							} else {
 								// Brand new map! Fetch details first
 								gName, gDesc, gRootPlaceID, err := services.GetUniverseDetails(*p.UniverseId)
@@ -379,6 +364,7 @@ func syncAllPresences() {
 								}
 								if err := database.DB.Create(&newMap).Error; err == nil {
 									LogCron("INFO", "[AutoMap] Successfully created brand new RobloxMap with UniverseID %d: '%s'", *p.UniverseId, p.LastLocation)
+									mapID = &newMap.ID
 								} else {
 									LogCron("ERROR", "[AutoMap] Failed to write new RobloxMap with UniverseID %d to DB: %v", *p.UniverseId, err)
 								}
@@ -387,7 +373,9 @@ func syncAllPresences() {
 					} else {
 						// Fallback: Name-only check if UniverseId is missing
 						var existingMap models.RobloxMap
-						if err := database.DB.Where("name = ?", p.LastLocation).First(&existingMap).Error; err != nil {
+						if err := database.DB.Where("name = ?", p.LastLocation).First(&existingMap).Error; err == nil {
+							mapID = &existingMap.ID
+						} else {
 							newMap := models.RobloxMap{
 								Name:      p.LastLocation,
 								CreatedAt: time.Now(),
@@ -395,10 +383,31 @@ func syncAllPresences() {
 							}
 							if err := database.DB.Create(&newMap).Error; err == nil {
 								LogCron("INFO", "[AutoMap] Fallback name-only map added to DB: '%s'", p.LastLocation)
+								mapID = &newMap.ID
 							}
 						}
 					}
 				}
+
+				_, isStealth := stealthMap[u.RobloxUserID]
+
+				newLog := models.ActivityLog{
+					UserID:    u.ID,
+					Status:    statusStr,
+					GameName:  p.LastLocation,
+					MapID:     mapID,
+					IsStealth: isStealth,
+				}
+				database.DB.Create(&newLog)
+
+				LogCron("INFO", "[PresenceSync] [Change Detected] User '%s' (RobloxUserID: %d) status changed from '%s' (%s) to '%s' (%s). Logged new activity record (Stealth: %t).",
+					u.RobloxUsername, rID, oldPresence, oldGame, statusStr, p.LastLocation, isStealth)
+				changeCount++
+
+				services.Hub.Broadcast(services.WSMessage{
+					Type:   "presence_update",
+					UserID: u.ID,
+				})
 			}
 		}
 	}

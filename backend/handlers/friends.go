@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -128,6 +129,49 @@ func GetFriends(c *fiber.Ctx) error {
 		})
 	}
 
+	// Sort list in Go using post-masked stealth presence to avoid leaking online status via list ordering
+	sort.Slice(res, func(i, j int) bool {
+		// 1. Sort by friend status: "active" (0) before others (1)
+		statusI := 1
+		if res[i].Status == "active" {
+			statusI = 0
+		}
+		statusJ := 1
+		if res[j].Status == "active" {
+			statusJ = 0
+		}
+		if statusI != statusJ {
+			return statusI < statusJ
+		}
+
+		// 2. Sort by masked presence rank
+		getPresenceRank := func(p string) int {
+			switch p {
+			case "In-Game":
+				return 0
+			case "In-Studio":
+				return 1
+			case "Online":
+				return 2
+			case "Invisible":
+				return 3
+			case "Offline":
+				return 4
+			default:
+				return 5
+			}
+		}
+
+		rankI := getPresenceRank(res[i].CurrentPresence)
+		rankJ := getPresenceRank(res[j].CurrentPresence)
+		if rankI != rankJ {
+			return rankI < rankJ
+		}
+
+		// 3. Sort by display name ascending case-insensitive
+		return strings.ToLower(res[i].FriendDisplayName) < strings.ToLower(res[j].FriendDisplayName)
+	})
+
 	return c.JSON(res)
 }
 
@@ -207,7 +251,7 @@ func GetActivityLogs(c *fiber.Ctx) error {
 	database.DB.Where("user_id = ? AND owner_id = ? AND status = ?", friend.FriendID, userId, "First Added").
 		Order("created_at asc").First(&firstAddedLog)
 
-	query := database.DB.Where("user_id = ? AND (owner_id IS NULL OR owner_id = ?)", friend.FriendID, userId)
+	query := database.DB.Preload("Map").Where("user_id = ? AND (owner_id IS NULL OR owner_id = ?)", friend.FriendID, userId)
 
 	// 2. Jika ditemukan log "First Added", sembunyikan semua log (global/privat) sebelum waktu tersebut
 	if firstAddedLog.ID > 0 {

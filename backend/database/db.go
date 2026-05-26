@@ -18,6 +18,14 @@ func ConnectDB() {
 	// Force Go runtime's local timezone to WIB (Western Indonesian Time / Asia/Jakarta / UTC+7)
 	time.Local = time.FixedZone("WIB", 7*60*60)
 
+	// Close existing DB pool to avoid connection leaks during reconnect / database restores
+	if DB != nil {
+		if sqlDB, err := DB.DB(); err == nil && sqlDB != nil {
+			log.Println("Closing existing database connection pool before reconnecting...")
+			sqlDB.Close()
+		}
+	}
+
 	host := os.Getenv("DB_HOST")
 	user := os.Getenv("DB_USER")
 	password := os.Getenv("DB_PASSWORD")

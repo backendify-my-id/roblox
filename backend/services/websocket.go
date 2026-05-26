@@ -18,6 +18,13 @@ type WSClient struct {
 	Conn     *websocket.Conn
 	UserID   uint
 	Username string
+	mu       sync.Mutex // Guard against concurrent websocket writes
+}
+
+func (client *WSClient) SafeWrite(messageType int, data []byte) error {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return client.Conn.WriteMessage(messageType, data)
 }
 
 type WSHub struct {
@@ -148,7 +155,7 @@ func (h *WSHub) sendToTrackers(message WSMessage) {
 
 		for client := range h.clients {
 			if client.UserID == f.UserID {
-				err := client.Conn.WriteMessage(websocket.TextMessage, msgBytes)
+				err := client.SafeWrite(websocket.TextMessage, msgBytes)
 				if err != nil {
 					log.Printf("[WS] Error sending message to client ID %d: %v", client.UserID, err)
 				}

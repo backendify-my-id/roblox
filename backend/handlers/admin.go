@@ -85,14 +85,15 @@ func ApproveUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	var user models.User
-	if err := database.DB.First(&user, userId).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
-	}
+	result := database.DB.Model(&models.User{}).
+		Where("id = ?", userId).
+		Update("is_approved", req.IsApproved)
 
-	user.IsApproved = req.IsApproved
-	if err := database.DB.Save(&user).Error; err != nil {
+	if result.Error != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update user approval status"})
+	}
+	if result.RowsAffected == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
 	statusMsg := "disetujui"
@@ -109,7 +110,7 @@ func GetUserActivityLogs(c *fiber.Ctx) error {
 	limit := c.QueryInt("limit", 100)
 
 	var logs []models.ActivityLog
-	if err := database.DB.Where("user_id = ?", userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
+	if err := database.DB.Preload("Map").Where("user_id = ?", userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch activity logs"})
 	}
 
@@ -178,15 +179,15 @@ func GetUserTrackers(c *fiber.Ctx) error {
 	userId := c.Params("id")
 	
 	type TrackerResult struct {
-		ID                uint   `json:"id"`
-		RobloxUserID      string `json:"roblox_user_id"`
-		RobloxUsername    string `json:"roblox_username"`
-		RobloxDisplayName string `json:"roblox_display_name"`
-		AvatarURL         string `json:"avatar_url"`
-		RoleName          string `json:"role_name"`
-		Status            string `json:"status"`
-		Note              string `json:"note"`
-		CreatedAt         string `json:"created_at"`
+		ID                uint      `json:"id"`
+		RobloxUserID      string    `json:"roblox_user_id"`
+		RobloxUsername    string    `json:"roblox_username"`
+		RobloxDisplayName string    `json:"roblox_display_name"`
+		AvatarURL         string    `json:"avatar_url"`
+		RoleName          string    `json:"role_name"`
+		Status            string    `json:"status"`
+		Note              string    `json:"note"`
+		CreatedAt         time.Time `json:"created_at"`
 	}
 
 	var results []TrackerResult
@@ -224,22 +225,28 @@ func UpdateAdminNote(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
 	}
 
-	var user models.User
-	if err := database.DB.First(&user, userId).Error; err != nil {
+	adminNote := strings.TrimSpace(input.AdminNote)
+	if len(adminNote) > 2000 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Admin note too long (maximum 2000 characters)"})
+	}
+
+	result := database.DB.Model(&models.User{}).
+		Where("id = ?", userId).
+		Update("admin_note", adminNote)
+
+	if result.Error != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update admin note"})
+	}
+	if result.RowsAffected == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	user.AdminNote = input.AdminNote
-	if err := database.DB.Save(&user).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update admin note"})
-	}
-
-	return c.JSON(fiber.Map{"message": "Admin note updated successfully", "admin_note": user.AdminNote})
+	return c.JSON(fiber.Map{"message": "Admin note updated successfully", "admin_note": adminNote})
 }
 
 func BackupDatabase(c *fiber.Ctx) error {
-	role := c.Locals("role").(string)
-	if role != "admin" {
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "admin" {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
 	}
 
@@ -273,6 +280,11 @@ func BackupDatabase(c *fiber.Ctx) error {
 
 	out, err := cmd.Output()
 	if err != nil {
+		if execErr, ok := err.(*exec.Error); ok && execErr.Err == exec.ErrNotFound {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "PostgreSQL client tool 'pg_dump' is not installed or not found in system PATH",
+			})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to run pg_dump: " + err.Error() + " (details: " + stderr.String() + ")",
 		})
@@ -285,14 +297,19 @@ func BackupDatabase(c *fiber.Ctx) error {
 }
 
 func RestoreDatabase(c *fiber.Ctx) error {
-	role := c.Locals("role").(string)
-	if role != "admin" {
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "admin" {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
 	}
 
 	file, err := c.FormFile("backup")
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Failed to receive uploaded file: " + err.Error()})
+	}
+
+	// DoS mitigation: restrict upload size to 50MB
+	if file.Size > 50*1024*1024 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Backup file is too large (maximum 50MB)"})
 	}
 
 	// Create temp directory if it doesn't exist
@@ -327,6 +344,11 @@ func RestoreDatabase(c *fiber.Ctx) error {
 	var cleanStderr bytes.Buffer
 	cleanCmd.Stderr = &cleanStderr
 	if err := cleanCmd.Run(); err != nil {
+		if execErr, ok := err.(*exec.Error); ok && execErr.Err == exec.ErrNotFound {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "PostgreSQL client tool 'psql' is not installed or not found in system PATH",
+			})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to clean database: " + err.Error() + " (details: " + cleanStderr.String() + ")",
 		})
@@ -339,10 +361,18 @@ func RestoreDatabase(c *fiber.Ctx) error {
 	var restoreStderr bytes.Buffer
 	restoreCmd.Stderr = &restoreStderr
 	if err := restoreCmd.Run(); err != nil {
+		if execErr, ok := err.(*exec.Error); ok && execErr.Err == exec.ErrNotFound {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "PostgreSQL client tool 'psql' is not installed or not found in system PATH",
+			})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to restore database: " + err.Error() + " (details: " + restoreStderr.String() + ")",
 		})
 	}
+
+	// Step 3: Self-healing reconnect & re-migrate to avoid stale connection prepared statement cache issues
+	database.ConnectDB()
 
 	return c.JSON(fiber.Map{"message": "Database successfully restored from backup!"})
 }
@@ -452,10 +482,6 @@ func GetShadowActivities(c *fiber.Ctx) error {
 
 func ReviewShadowActivity(c *fiber.Ctx) error {
 	id := c.Params("id")
-	var activity models.ShadowActivity
-	if err := database.DB.First(&activity, id).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Shadow activity not found"})
-	}
 
 	type Request struct {
 		IsReviewed bool   `json:"is_reviewed"`
@@ -467,11 +493,29 @@ func ReviewShadowActivity(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	activity.IsReviewed = req.IsReviewed
-	activity.AdminNotes = req.AdminNotes
+	adminNotes := strings.TrimSpace(req.AdminNotes)
+	if len(adminNotes) > 2000 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Admin notes too long (maximum 2000 characters)"})
+	}
 
-	if err := database.DB.Save(&activity).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update shadow activity: " + err.Error()})
+	result := database.DB.Model(&models.ShadowActivity{}).
+		Where("id = ?", id).
+		Select("is_reviewed", "admin_notes").
+		Updates(models.ShadowActivity{
+			IsReviewed: req.IsReviewed,
+			AdminNotes: adminNotes,
+		})
+
+	if result.Error != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update shadow activity: " + result.Error.Error()})
+	}
+	if result.RowsAffected == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Shadow activity not found"})
+	}
+
+	var activity models.ShadowActivity
+	if err := database.DB.Preload("User").First(&activity, id).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch updated shadow activity"})
 	}
 
 	return c.JSON(activity)
@@ -487,19 +531,20 @@ func UpdateUserRole(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
 	}
 
-	var user models.User
-	if err := database.DB.First(&user, userId).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
-	}
-
 	var role models.Role
 	if err := database.DB.Where("name = ?", input.RoleName).First(&role).Error; err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Role not found"})
 	}
 
-	user.RoleID = &role.ID
-	if err := database.DB.Save(&user).Error; err != nil {
+	result := database.DB.Model(&models.User{}).
+		Where("id = ?", userId).
+		Update("role_id", &role.ID)
+
+	if result.Error != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update user role"})
+	}
+	if result.RowsAffected == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
 	return c.JSON(fiber.Map{

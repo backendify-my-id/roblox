@@ -191,7 +191,7 @@ func GetMyActivityLogs(c *fiber.Ctx) error {
 
 	var logs []models.ActivityLog
 	// Ambil semua log global atau log yang kita buat sendiri untuk kita
-	if err := database.DB.Where("user_id = ? AND (owner_id IS NULL OR owner_id = ?)", userId, userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
+	if err := database.DB.Preload("Map").Where("user_id = ? AND (owner_id IS NULL OR owner_id = ?)", userId, userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch activity logs"})
 	}
 
