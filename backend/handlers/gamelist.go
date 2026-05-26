@@ -6,6 +6,7 @@ import (
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
 
 func generateInviteCode() string {
@@ -168,9 +169,18 @@ func DeleteGameList(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Only the owner can delete the list"})
 	}
 
-	// Delete members, entries, media first (cascading conceptually, though GORM could do it if configured)
+	// Cek semua ID entri di dalam daftar game ini
+	var entryIDs []uint
+	database.DB.Model(&models.GameEntry{}).Where("game_list_id = ?", listID).Pluck("id", &entryIDs)
+
+	// Bersihkan data relasi screenshot/media dan review di semua entri daftar ini agar tidak memicu error FK PostgreSQL
+	if len(entryIDs) > 0 {
+		database.DB.Where("game_entry_id IN ?", entryIDs).Delete(&models.GameMedia{})
+		database.DB.Where("game_entry_id IN ?", entryIDs).Delete(&models.GameReview{})
+	}
+
+	// Bersihkan data anggota kelompok pertemanan dan entri
 	database.DB.Where("game_list_id = ?", listID).Delete(&models.GameListMember{})
-	// For entries, we'd ideally delete media too. A simple way is to delete entries; we'll add cascade later if needed.
 	database.DB.Where("game_list_id = ?", listID).Delete(&models.GameEntry{})
 	
 	if err := database.DB.Delete(&list).Error; err != nil {
@@ -305,7 +315,6 @@ func ImportGameList(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Daftar game tidak ditemukan"})
 	}
 
-	// 2. Create cloned list
 	clonedList := models.GameList{
 		Name:        originalList.Name,
 		Description: originalList.Description,
@@ -314,27 +323,41 @@ func ImportGameList(c *fiber.Ctx) error {
 		ShareToken:  generateShareToken(),
 	}
 
-	if err := database.DB.Create(&clonedList).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mengimpor daftar game"})
-	}
-
-	// 3. Add current user as member of the cloned list
-	member := models.GameListMember{
-		GameListID: clonedList.ID,
-		UserID:     userID,
-	}
-	database.DB.Create(&member)
-
-	// 4. Clone all entries
-	for _, entry := range originalList.Entries {
-		clonedEntry := models.GameEntry{
-			GameListID:  clonedList.ID,
-			AddedByID:   userID,
-			RobloxMapID: entry.RobloxMapID,
-			Description: entry.Description,
-			Status:      "to_play", // Reset to fresh status
+	// Bungkus proses kloning dalam database transaction agar atomik dan menghindari data korup/setengah-setengah jika gagal di tengah jalan
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		// 2. Create cloned list
+		if err := tx.Create(&clonedList).Error; err != nil {
+			return err
 		}
-		database.DB.Create(&clonedEntry)
+
+		// 3. Add current user as member of the cloned list
+		member := models.GameListMember{
+			GameListID: clonedList.ID,
+			UserID:     userID,
+		}
+		if err := tx.Create(&member).Error; err != nil {
+			return err
+		}
+
+		// 4. Clone all entries
+		for _, entry := range originalList.Entries {
+			clonedEntry := models.GameEntry{
+				GameListID:  clonedList.ID,
+				AddedByID:   userID,
+				RobloxMapID: entry.RobloxMapID,
+				Description: entry.Description,
+				Status:      "to_play", // Reset to fresh status
+			}
+			if err := tx.Create(&clonedEntry).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mengimpor daftar game: " + err.Error()})
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(clonedList)

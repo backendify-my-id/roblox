@@ -366,3 +366,26 @@ func GetUniverseDetails(universeID uint64) (string, string, uint64, error) {
 
 	return res.Data[0].Name, res.Data[0].Description, res.Data[0].RootPlaceId, nil
 }
+
+func GetUniverseIDFromPlaceID(placeID uint64) (uint64, error) {
+	targetURL := fmt.Sprintf("https://apis.roblox.com/universes/v1/places/%d/universe", placeID)
+	waitForRateLimit()
+	resp, err := http.Get(targetURL)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return 0, fmt.Errorf("universes-api returned status: %d", resp.StatusCode)
+	}
+
+	var res struct {
+		UniverseID uint64 `json:"universeId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return 0, err
+	}
+
+	return res.UniverseID, nil
+}

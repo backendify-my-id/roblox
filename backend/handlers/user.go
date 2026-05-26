@@ -3,6 +3,7 @@ package handlers
 import (
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
+	"github.com/apany/roblox-friend-tracker/services"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -80,6 +81,12 @@ func UpdateStealthMode(c *fiber.Ctx) error {
 		database.DB.Create(&fakeLog)
 	}
 
+	// Kirim broadcast WebSocket real-time ke semua pelacak agar perubahan status langsung termuat di layar mereka
+	services.Hub.Broadcast(services.WSMessage{
+		Type:   "presence_update",
+		UserID: userID,
+	})
+
 	return c.JSON(fiber.Map{"message": "Mode Siluman diperbarui", "is_stealth": req.IsStealth})
 }
 
@@ -108,6 +115,20 @@ func AddStealthExemption(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Pengguna tidak ditemukan di database"})
 	}
 
+	// Validasi 1: Pastikan admin tidak menambahkan dirinya sendiri
+	if targetUser.ID == userID {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Anda tidak bisa menambahkan diri sendiri ke daftar pengecualian"})
+	}
+
+	// Validasi 2: Pastikan pengguna belum ada di daftar pengecualian admin (mencegah duplikasi & error PostgreSQL)
+	var count int64
+	database.DB.Table("stealth_exemptions").
+		Where("user_id = ? AND exempt_id = ?", userID, targetUser.ID).
+		Count(&count)
+	if count > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Pengguna sudah ada dalam daftar pengecualian"})
+	}
+
 	// Tambahkan ke relasi
 	var admin models.User
 	database.DB.First(&admin, userID)
@@ -115,6 +136,12 @@ func AddStealthExemption(c *fiber.Ctx) error {
 	if err := database.DB.Model(&admin).Association("StealthExempts").Append(&targetUser); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal menambahkan pengecualian"})
 	}
+
+	// Kirim broadcast WebSocket agar status asli admin langsung terlihat oleh user yang baru saja dikecualikan
+	services.Hub.Broadcast(services.WSMessage{
+		Type:   "presence_update",
+		UserID: userID,
+	})
 
 	return c.JSON(fiber.Map{"message": "Berhasil ditambahkan", "exempt": fiber.Map{
 		"id": targetUser.ID,
@@ -142,6 +169,12 @@ func RemoveStealthExemption(c *fiber.Ctx) error {
 	var targetUser models.User
 	if err := database.DB.First(&targetUser, targetID).Error; err == nil {
 		database.DB.Model(&admin).Association("StealthExempts").Delete(&targetUser)
+		
+		// Kirim broadcast WebSocket agar status admin kembali menjadi Offline tersembunyi untuk user tersebut
+		services.Hub.Broadcast(services.WSMessage{
+			Type:   "presence_update",
+			UserID: userID,
+		})
 	}
 
 	return c.JSON(fiber.Map{"message": "Berhasil dihapus"})

@@ -186,15 +186,17 @@ func GetActivityLogs(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Friend not found"})
 	}
 
-	// Cek apakah target sedang mode siluman
-	isStealth := friend.TargetUser.IsStealth
+	// Pastikan teman ini milik user yang sedang login
+	if friend.UserID != userId {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "You do not have permission to view this friend's activity logs"})
+	}
+
+	// Cek apakah user yang login dikecualikan dari mode siluman target (selalu izinkan melihat jika masuk daftar pengecualian)
 	isExempted := false
-	if isStealth {
-		for _, ex := range friend.TargetUser.StealthExempts {
-			if ex.ID == userId {
-				isExempted = true
-				break
-			}
+	for _, ex := range friend.TargetUser.StealthExempts {
+		if ex.ID == userId {
+			isExempted = true
+			break
 		}
 	}
 
@@ -252,15 +254,17 @@ func GetProfileChangeLogs(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Friend not found"})
 	}
 
-	// Cek apakah target sedang mode siluman
-	isStealth := friend.TargetUser.IsStealth
+	// Pastikan teman ini milik user yang sedang login
+	if friend.UserID != userId {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "You do not have permission to view this friend's profile change logs"})
+	}
+
+	// Cek apakah user yang login dikecualikan dari mode siluman target (selalu izinkan melihat jika masuk daftar pengecualian)
 	isExempted := false
-	if isStealth {
-		for _, ex := range friend.TargetUser.StealthExempts {
-			if ex.ID == userId {
-				isExempted = true
-				break
-			}
+	for _, ex := range friend.TargetUser.StealthExempts {
+		if ex.ID == userId {
+			isExempted = true
+			break
 		}
 	}
 

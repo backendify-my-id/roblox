@@ -114,21 +114,54 @@ func syncAllPresences() {
 
 	LogCron("INFO", "[PresenceSync] Successfully acquired Redis lock '%s' for presence sync.", lockKey)
 
-	var friends []models.Friend
-	if err := database.DB.Preload("TargetUser").
+	// Fetch all target user IDs from active friend linkages
+	var targetIDs []uint
+	if err := database.DB.Model(&models.Friend{}).
 		Joins("JOIN users owner ON friends.user_id = owner.id").
 		Where("friends.status = ? AND owner.is_approved = ?", "active", true).
-		Find(&friends).Error; err != nil {
-		LogCron("ERROR", "[PresenceSync] Failed to fetch active friends for approved users: %v", err)
+		Pluck("friends.friend_id", &targetIDs).Error; err != nil {
+		LogCron("ERROR", "[PresenceSync] Failed to fetch active target user IDs: %v", err)
 		return
 	}
 
-	LogCron("INFO", "[PresenceSync] Found %d active friend linkages to sync.", len(friends))
-
-	if len(friends) == 0 {
-		LogCron("INFO", "[PresenceSync] No active friends to check. Sync completed.")
+	// Fetch all approved registered users
+	var registeredIDs []uint
+	if err := database.DB.Model(&models.User{}).
+		Where("role_id IS NOT NULL AND is_approved = ?", true).
+		Pluck("id", &registeredIDs).Error; err != nil {
+		LogCron("ERROR", "[PresenceSync] Failed to fetch approved registered user IDs: %v", err)
 		return
 	}
+
+	// Merge and deduplicate target and registered user IDs
+	idUnionMap := make(map[uint]bool)
+	var uniqueUserIDs []uint
+	for _, id := range targetIDs {
+		if !idUnionMap[id] {
+			idUnionMap[id] = true
+			uniqueUserIDs = append(uniqueUserIDs, id)
+		}
+	}
+	for _, id := range registeredIDs {
+		if !idUnionMap[id] {
+			idUnionMap[id] = true
+			uniqueUserIDs = append(uniqueUserIDs, id)
+		}
+	}
+
+	if len(uniqueUserIDs) == 0 {
+		LogCron("INFO", "[PresenceSync] No target users or registered users to sync. Completed.")
+		return
+	}
+
+	// Fetch the full user objects
+	var usersToPoll []models.User
+	if err := database.DB.Where("id IN ?", uniqueUserIDs).Find(&usersToPoll).Error; err != nil {
+		LogCron("ERROR", "[PresenceSync] Failed to fetch users to poll: %v", err)
+		return
+	}
+
+	LogCron("INFO", "[PresenceSync] Found %d total users to poll (linkages + registered users).", len(usersToPoll))
 
 	// Get all stealth users and their exemptions
 	var stealthUsers []models.User
@@ -152,30 +185,29 @@ func syncAllPresences() {
 
 	// Deduplicate roblox IDs to minimize API calls
 	idMap := make(map[uint64]bool)
-	var uniqueIDs []uint64
-	for _, f := range friends {
-		rID, err := strconv.ParseUint(f.TargetUser.RobloxUserID, 10, 64)
+	var uniqueRobloxIDs []uint64
+	for _, u := range usersToPoll {
+		rID, err := strconv.ParseUint(u.RobloxUserID, 10, 64)
 		if err == nil {
 			if !idMap[rID] {
 				idMap[rID] = true
-				uniqueIDs = append(uniqueIDs, rID)
+				uniqueRobloxIDs = append(uniqueRobloxIDs, rID)
 			}
 		}
 	}
 
-	LogCron("INFO", "[PresenceSync] Deduplicated active friend targets count: %d (original linkages: %d)",
-		len(uniqueIDs), len(friends))
+	LogCron("INFO", "[PresenceSync] Deduplicated Roblox API poll targets count: %d", len(uniqueRobloxIDs))
 
 	// Batch into max 100 per request
 	batchSize := 100
 	presenceMap := make(map[uint64]services.PresenceData)
 
-	for i := 0; i < len(uniqueIDs); i += batchSize {
+	for i := 0; i < len(uniqueRobloxIDs); i += batchSize {
 		end := i + batchSize
-		if end > len(uniqueIDs) {
-			end = len(uniqueIDs)
+		if end > len(uniqueRobloxIDs) {
+			end = len(uniqueRobloxIDs)
 		}
-		batch := uniqueIDs[i:end]
+		batch := uniqueRobloxIDs[i:end]
 
 		LogCron("INFO", "[PresenceSync] [API Request] Fetching presence for batch [%d-%d] (size: %d)...",
 			i, end, len(batch))
@@ -194,19 +226,13 @@ func syncAllPresences() {
 		}
 	}
 
-	// Track updated user IDs to prevent duplicate logs/updates for the same user targeted by multiple people
-	updatedUserIDs := make(map[uint]bool)
 	changeCount := 0
 
-	// Update friends and log activities
-	for _, f := range friends {
-		if updatedUserIDs[f.TargetUser.ID] {
-			continue // Already processed this user in this sync run
-		}
-
-		rID, err := strconv.ParseUint(f.TargetUser.RobloxUserID, 10, 64)
+	// Update users and log activities
+	for _, u := range usersToPoll {
+		rID, err := strconv.ParseUint(u.RobloxUserID, 10, 64)
 		if err != nil {
-			LogCron("ERROR", "[PresenceSync] Failed to parse RobloxUserID '%s' to uint64: %v", f.TargetUser.RobloxUserID, err)
+			LogCron("ERROR", "[PresenceSync] Failed to parse RobloxUserID '%s' to uint64: %v", u.RobloxUserID, err)
 			continue
 		}
 
@@ -228,18 +254,19 @@ func syncAllPresences() {
 				p.LastLocation = "-"
 			}
 
-			if f.TargetUser.CurrentPresence != statusStr || f.TargetUser.CurrentGameName != p.LastLocation {
-				oldPresence := f.TargetUser.CurrentPresence
-				oldGame := f.TargetUser.CurrentGameName
+			if u.CurrentPresence != statusStr || u.CurrentGameName != p.LastLocation {
+				oldPresence := u.CurrentPresence
+				oldGame := u.CurrentGameName
 
-				f.TargetUser.CurrentPresence = statusStr
-				f.TargetUser.CurrentGameName = p.LastLocation
-				database.DB.Save(&f.TargetUser)
+				u.CurrentPresence = statusStr
+				u.CurrentGameName = p.LastLocation
+				u.UpdatedAt = time.Now()
+				database.DB.Model(&u).Select("current_presence", "current_game_name", "updated_at").Updates(&u)
 
-				_, isStealth := stealthMap[f.TargetUser.RobloxUserID]
+				_, isStealth := stealthMap[u.RobloxUserID]
 
 				newLog := models.ActivityLog{
-					UserID:    f.TargetUser.ID,
+					UserID:    u.ID,
 					Status:    statusStr,
 					GameName:  p.LastLocation,
 					IsStealth: isStealth,
@@ -247,12 +274,12 @@ func syncAllPresences() {
 				database.DB.Create(&newLog)
 
 				LogCron("INFO", "[PresenceSync] [Change Detected] User '%s' (RobloxUserID: %d) status changed from '%s' (%s) to '%s' (%s). Logged new activity record (Stealth: %t).",
-					f.TargetUser.RobloxUsername, rID, oldPresence, oldGame, statusStr, p.LastLocation, isStealth)
+					u.RobloxUsername, rID, oldPresence, oldGame, statusStr, p.LastLocation, isStealth)
 				changeCount++
 
 				services.Hub.Broadcast(services.WSMessage{
 					Type:   "presence_update",
-					UserID: f.TargetUser.ID,
+					UserID: u.ID,
 				})
 
 				// Auto-create or update map in database if the target is In-Game
@@ -268,7 +295,7 @@ func syncAllPresences() {
 								hasChanges = true
 								LogCron("INFO", "[AutoMap] [Update] Updated map name for UniverseID %d: '%s' -> '%s'", *p.UniverseId, oldName, p.LastLocation)
 							}
-							if existingMap.Description == "" || existingMap.UrlPath == "" {
+							if existingMap.Description == "" || existingMap.UrlPath == "" || existingMap.PlaceID == nil || *existingMap.PlaceID == 0 {
 								gName, gDesc, gRootPlaceID, err := services.GetUniverseDetails(*p.UniverseId)
 								if err == nil {
 									if existingMap.Description == "" {
@@ -372,14 +399,11 @@ func syncAllPresences() {
 						}
 					}
 				}
-
-				updatedUserIDs[f.TargetUser.ID] = true
 			}
 		}
 	}
 
 	duration := time.Since(startTime)
 	LogCron("INFO", "[PresenceSync] Completed. Total processed: %d targets, Status changes detected: %d, Duration: %v",
-		len(friends), changeCount, duration)
-
+		len(usersToPoll), changeCount, duration)
 }

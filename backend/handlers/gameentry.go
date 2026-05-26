@@ -3,6 +3,7 @@ package handlers
 import (
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
+	"github.com/apany/roblox-friend-tracker/services"
 	"github.com/gofiber/fiber/v2"
 	"time"
 )
@@ -61,6 +62,24 @@ func CreateGameEntry(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
+	}
+
+	// Jika UniverseID kosong tapi PlaceID terisi (biasanya hasil input instan / link parser),
+	// otomatis cari UniverseID dan detail game (nama, deskripsi, dll.) dari API Roblox di backend!
+	if (input.UniverseID == nil || *input.UniverseID == 0) && (input.PlaceID != nil && *input.PlaceID > 0) {
+		uID, err := services.GetUniverseIDFromPlaceID(*input.PlaceID)
+		if err == nil && uID > 0 {
+			input.UniverseID = &uID
+			gName, gDesc, _, err := services.GetUniverseDetails(uID)
+			if err == nil {
+				if input.Name == "" || input.Name == "Roblox Game" {
+					input.Name = gName
+				}
+				if input.GlobalDesc == "" {
+					input.GlobalDesc = gDesc
+				}
+			}
+		}
 	}
 
 	if input.Name == "" {
@@ -186,6 +205,24 @@ func UpdateGameEntry(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
 	}
 
+	// Jika UniverseID kosong tapi PlaceID terisi (biasanya hasil input instan / link parser),
+	// otomatis cari UniverseID dan detail game (nama, deskripsi, dll.) dari API Roblox di backend!
+	if (input.UniverseID == nil || *input.UniverseID == 0) && (input.PlaceID != nil && *input.PlaceID > 0) {
+		uID, err := services.GetUniverseIDFromPlaceID(*input.PlaceID)
+		if err == nil && uID > 0 {
+			input.UniverseID = &uID
+			gName, gDesc, _, err := services.GetUniverseDetails(uID)
+			if err == nil {
+				if input.Name == "" || input.Name == "Roblox Game" {
+					input.Name = gName
+				}
+				if input.GlobalDesc == "" {
+					input.GlobalDesc = gDesc
+				}
+			}
+		}
+	}
+
 	if input.Name != "" {
 		var robloxMap models.RobloxMap
 		if input.UniverseID != nil && *input.UniverseID > 0 {
@@ -283,8 +320,9 @@ func DeleteGameEntry(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Entry not found in this list"})
 	}
 
-	// Ideally we delete associated media files from disk here too before DB deletion
+	// Bersihkan data relasi screenshot/media dan review pada entri game ini agar tidak memicu error FK PostgreSQL saat dihapus
 	database.DB.Where("game_entry_id = ?", entryID).Delete(&models.GameMedia{})
+	database.DB.Where("game_entry_id = ?", entryID).Delete(&models.GameReview{})
 
 	if err := database.DB.Delete(&entry).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete game entry"})
