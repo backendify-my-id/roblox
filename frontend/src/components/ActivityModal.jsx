@@ -143,11 +143,11 @@ const ActivityModal = ({ friend, onClose }) => {
   const maxDurationVal = Math.max(...dayPlayMinutes);
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ background: '#1e293b', width: '95%', maxWidth: '780px', borderRadius: '1rem', padding: '1.5rem', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '780px' }}>
         
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexShrink: 0 }}>
           <div>
             <h2 style={{ fontSize: '1.4rem', margin: 0, background: 'linear-gradient(to right, #60a5fa, #a78bfa)', WebkitBackgroundClip: 'text', color: 'transparent' }}>
               Dashboard Aktivitas Teman
@@ -160,17 +160,14 @@ const ActivityModal = ({ friend, onClose }) => {
         </div>
 
         {/* Tab Navigation */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>
+        <div className="modal-tabs">
           <button
             onClick={() => setActiveTab('logs')}
+            className="modal-tab-btn"
             style={{
-              padding: '0.5rem 1rem',
-              borderRadius: '0.5rem',
               border: activeTab === 'logs' ? '1px solid #3b82f6' : '1px solid transparent',
               background: activeTab === 'logs' ? 'rgba(59,130,246,0.15)' : 'transparent',
               color: activeTab === 'logs' ? '#60a5fa' : 'var(--text-muted)',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
               fontWeight: activeTab === 'logs' ? 600 : 400,
             }}
           >
@@ -178,14 +175,11 @@ const ActivityModal = ({ friend, onClose }) => {
           </button>
           <button
             onClick={() => setActiveTab('analytics')}
+            className="modal-tab-btn"
             style={{
-              padding: '0.5rem 1rem',
-              borderRadius: '0.5rem',
               border: activeTab === 'analytics' ? '1px solid #a78bfa' : '1px solid transparent',
               background: activeTab === 'analytics' ? 'rgba(167,139,250,0.15)' : 'transparent',
               color: activeTab === 'analytics' ? '#c084fc' : 'var(--text-muted)',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
               fontWeight: activeTab === 'analytics' ? 600 : 400,
             }}
           >
@@ -202,37 +196,39 @@ const ActivityModal = ({ friend, onClose }) => {
         ) : activeTab === 'logs' ? (
           /* ─── TAB 1: LOG TABLE ──────────────────────────────────────────────── */
           <div style={{ overflowY: 'auto', flex: 1 }}>
-            <table className="logs-table" style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
-                  <th style={{ padding: '0.75rem 0.5rem', color: 'var(--text-muted)' }}>Waktu (Lokal)</th>
-                  <th style={{ padding: '0.75rem 0.5rem', color: 'var(--text-muted)' }}>Status</th>
-                  <th style={{ padding: '0.75rem 0.5rem', color: 'var(--text-muted)' }}>Game</th>
-                </tr>
-              </thead>
-              <tbody>
-                {logs.map((log) => (
-                  <tr key={log.id} style={{ borderBottom: '1px solid #334155' }}>
-                    <td style={{ padding: '0.6rem 0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                      {new Date(log.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
-                    </td>
-                    <td style={{ padding: '0.6rem 0.5rem' }}>
-                      <span style={{ 
-                        color: log.status === 'In-Game' ? '#a78bfa' : 
-                               log.status === 'Online' ? '#22c55e' : 
-                               log.status === 'Removed' ? '#ef4444' : 
-                               (log.status === 'First Added' || log.status === 'Added Again') ? '#60a5fa' : 'var(--text-muted)' 
-                      }}>
-                        {log.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.6rem 0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                      {log.game_name || '-'}
-                    </td>
+            <div className="table-responsive">
+              <table className="logs-table" style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
+                    <th style={{ padding: '0.75rem 0.5rem', color: 'var(--text-muted)' }}>Waktu (Lokal)</th>
+                    <th style={{ padding: '0.75rem 0.5rem', color: 'var(--text-muted)' }}>Status</th>
+                    <th style={{ padding: '0.75rem 0.5rem', color: 'var(--text-muted)' }}>Game</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {logs.map((log) => (
+                    <tr key={log.id} style={{ borderBottom: '1px solid #334155' }}>
+                      <td style={{ padding: '0.6rem 0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        {new Date(log.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
+                      </td>
+                      <td style={{ padding: '0.6rem 0.5rem' }}>
+                        <span style={{ 
+                          color: log.status === 'In-Game' ? '#a78bfa' : 
+                                 log.status === 'Online' ? '#22c55e' : 
+                                 log.status === 'Removed' ? '#ef4444' : 
+                                 (log.status === 'First Added' || log.status === 'Added Again') ? '#60a5fa' : 'var(--text-muted)' 
+                        }}>
+                          {log.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.6rem 0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        {log.game_name || '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             
             {hasMore && (
               <div style={{ textAlign: 'center', marginTop: '1rem', paddingBottom: '0.5rem' }}>

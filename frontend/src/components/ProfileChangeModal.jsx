@@ -45,8 +45,8 @@ const ProfileChangeModal = ({ friend, onClose }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ background: '#1e293b', width: '90%', maxWidth: '600px', borderRadius: '1rem', padding: '1.5rem', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
         <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.5rem', marginBottom: '0.2rem' }}>Profile Changes</h2>
@@ -64,44 +64,46 @@ const ProfileChangeModal = ({ friend, onClose }) => {
             <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Belum ada riwayat perubahan profil.</div>
           ) : (
             <>
-              <table className="logs-table" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
-                    <th style={{ padding: '0.5rem' }}>Waktu</th>
-                    <th style={{ padding: '0.5rem' }}>Perubahan</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {logs.map((log) => (
-                    <tr key={log.id} style={{ borderBottom: '1px solid #334155' }}>
-                      <td style={{ padding: '0.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                        {new Date(log.created_at).toLocaleString('id-ID')}
-                      </td>
-                      <td style={{ padding: '0.5rem', fontSize: '0.95rem' }}>
-                        <strong>{log.change_type.toUpperCase()}:</strong> <br/>
-                        {log.change_type === 'avatar' ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem' }}>
-                            <div style={{ textAlign: 'center' }}>
-                              <img src={log.old_value} alt="Old avatar" style={{ width: 64, height: 64, borderRadius: '50%', border: '2px solid #ef4444', opacity: 0.6 }} />
-                              <div style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.25rem' }}>Lama</div>
-                            </div>
-                            <span style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>→</span>
-                            <div style={{ textAlign: 'center' }}>
-                              <img src={log.new_value} alt="New avatar" style={{ width: 64, height: 64, borderRadius: '50%', border: '2px solid #22c55e' }} />
-                              <div style={{ color: '#22c55e', fontSize: '0.75rem', marginTop: '0.25rem' }}>Baru</div>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <span style={{ color: '#ef4444', textDecoration: 'line-through' }}>{log.old_value}</span> <br/>
-                            <span style={{ color: '#22c55e' }}>{log.new_value}</span>
-                          </>
-                        )}
-                      </td>
+              <div className="table-responsive">
+                <table className="logs-table" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
+                      <th style={{ padding: '0.5rem' }}>Waktu</th>
+                      <th style={{ padding: '0.5rem' }}>Perubahan</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {logs.map((log) => (
+                      <tr key={log.id} style={{ borderBottom: '1px solid #334155' }}>
+                        <td style={{ padding: '0.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                          {new Date(log.created_at).toLocaleString('id-ID')}
+                        </td>
+                        <td style={{ padding: '0.5rem', fontSize: '0.95rem' }}>
+                          <strong>{log.change_type.toUpperCase()}:</strong> <br/>
+                          {log.change_type === 'avatar' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem' }}>
+                              <div style={{ textAlign: 'center' }}>
+                                <img src={log.old_value} alt="Old avatar" style={{ width: 64, height: 64, borderRadius: '50%', border: '2px solid #ef4444', opacity: 0.6 }} />
+                                <div style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.25rem' }}>Lama</div>
+                              </div>
+                              <span style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>→</span>
+                              <div style={{ textAlign: 'center' }}>
+                                <img src={log.new_value} alt="New avatar" style={{ width: 64, height: 64, borderRadius: '50%', border: '2px solid #22c55e' }} />
+                                <div style={{ color: '#22c55e', fontSize: '0.75rem', marginTop: '0.25rem' }}>Baru</div>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <span style={{ color: '#ef4444', textDecoration: 'line-through' }}>{log.old_value}</span> <br/>
+                              <span style={{ color: '#22c55e' }}>{log.new_value}</span>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               
               {hasMore && (
                 <div style={{ textAlign: 'center', marginTop: '1rem', paddingBottom: '0.5rem' }}>

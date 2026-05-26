@@ -720,6 +720,84 @@ body {
   flex-wrap: wrap;
 }
 
+/* --- Premium Modal and Responsive Helpers --- */
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal-content {
+  background: #1e293b !important;
+  width: 90% !important;
+  max-width: 750px !important;
+  border-radius: 1rem !important;
+  padding: 1.5rem !important;
+  max-height: 85vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+  animation: modalFadeIn 0.3s ease;
+  overflow: hidden;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 0.75rem;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Hide standard Firefox scrollbar */
+  flex-shrink: 0; /* Prevent flex squishing */
+}
+
+.modal-tabs::-webkit-scrollbar {
+  display: none; /* Hide Chrome/Safari scrollbar */
+}
+
+.modal-tab-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+/* Responsive Table Wrapper */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 1rem;
+}
+
 /* Admin Tabs Scrolling Container */
 .admin-tabs {
   display: flex;
@@ -873,9 +951,9 @@ body {
   
   /* Modals */
   .modal-content {
-    width: 95%;
-    padding: 1.5rem 1rem;
-    max-height: 90vh;
+    width: 95% !important;
+    padding: 1rem !important;
+    max-height: 92vh !important;
   }
   
   .modal-header h2 {

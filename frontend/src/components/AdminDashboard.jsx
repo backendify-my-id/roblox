@@ -249,11 +249,11 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
   ];
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ background: '#1e293b', width: '90%', maxWidth: '750px', borderRadius: '1rem', padding: '1.5rem', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             {selectedUser.avatar_url ? (
               <img src={selectedUser.avatar_url} alt="" style={{ width: 48, height: 48, borderRadius: '50%', border: '2px solid #3b82f6' }} />
@@ -268,7 +268,7 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer' }}>&times;</button>
         </div>
 
-        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1.25rem' }}>
+        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1.25rem', flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
             <span style={{ fontSize: '0.8rem', color: '#f59e0b', fontWeight: 'bold' }}>⭐ Admin Note:</span>
             <button 
@@ -293,19 +293,16 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>
+        <div className="modal-tabs">
           {tabs.map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
+              className="modal-tab-btn"
               style={{
-                padding: '0.5rem 1rem',
-                borderRadius: '0.5rem',
                 border: activeTab === tab.key ? '1px solid #3b82f6' : '1px solid transparent',
                 background: activeTab === tab.key ? 'rgba(59,130,246,0.15)' : 'transparent',
                 color: activeTab === tab.key ? '#60a5fa' : 'var(--text-muted)',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
                 fontWeight: activeTab === tab.key ? 600 : 400,
               }}
             >
@@ -323,33 +320,35 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Belum ada riwayat aktivitas.</div>
             ) : (
               <>
-                <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
-                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Waktu</th>
-                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Status</th>
-                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Game</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activityLogs.map(log => (
-                      <tr key={log.id} style={{ borderBottom: '1px solid #334155' }}>
-                        <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{new Date(log.created_at).toLocaleString('en-GB')}</td>
-                        <td style={{ padding: '0.5rem' }}>
-                          <span style={{
-                            color: log.status === 'In-Game' ? '#a78bfa' :
-                              log.status === 'Online' ? '#22c55e' :
-                                log.status === 'Removed' ? '#ef4444' :
-                                  (log.status === 'First Added' || log.status === 'Added Again') ? '#60a5fa' : 'var(--text-muted)'
-                          }}>
-                            {log.status}
-                          </span>
-                        </td>
-                        <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{log.game_name || '-'}</td>
+                <div className="table-responsive">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
+                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Waktu</th>
+                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Status</th>
+                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Game</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {activityLogs.map(log => (
+                        <tr key={log.id} style={{ borderBottom: '1px solid #334155' }}>
+                          <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{new Date(log.created_at).toLocaleString('en-GB')}</td>
+                          <td style={{ padding: '0.5rem' }}>
+                            <span style={{
+                              color: log.status === 'In-Game' ? '#a78bfa' :
+                                log.status === 'Online' ? '#22c55e' :
+                                  log.status === 'Removed' ? '#ef4444' :
+                                    (log.status === 'First Added' || log.status === 'Added Again') ? '#60a5fa' : 'var(--text-muted)'
+                            }}>
+                              {log.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{log.game_name || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 {hasMoreActivity && (
                   <div style={{ textAlign: 'center', marginTop: '1rem', paddingBottom: '0.5rem' }}>
                     <button
@@ -556,44 +555,46 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Belum ada riwayat perubahan profil.</div>
             ) : (
               <>
-                <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
-                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Waktu</th>
-                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Perubahan</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {profileLogs.map(log => (
-                      <tr key={log.id} style={{ borderBottom: '1px solid #334155' }}>
-                        <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)', verticalAlign: 'top' }}>
-                          {new Date(log.created_at).toLocaleString('id-ID')}
-                        </td>
-                        <td style={{ padding: '0.5rem' }}>
-                          <strong>{log.change_type.toUpperCase()}:</strong><br />
-                          {log.change_type === 'avatar' ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem' }}>
-                              <div style={{ textAlign: 'center' }}>
-                                <img src={log.old_value} alt="Old" style={{ width: 48, height: 48, borderRadius: '50%', border: '2px solid #ef4444', opacity: 0.6 }} />
-                                <div style={{ color: '#ef4444', fontSize: '0.7rem' }}>Lama</div>
-                              </div>
-                              <span style={{ color: 'var(--text-muted)' }}>→</span>
-                              <div style={{ textAlign: 'center' }}>
-                                <img src={log.new_value} alt="New" style={{ width: 48, height: 48, borderRadius: '50%', border: '2px solid #22c55e' }} />
-                                <div style={{ color: '#22c55e', fontSize: '0.7rem' }}>Baru</div>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <span style={{ color: '#ef4444', textDecoration: 'line-through' }}>{log.old_value}</span><br />
-                              <span style={{ color: '#22c55e' }}>{log.new_value}</span>
-                            </>
-                          )}
-                        </td>
+                <div className="table-responsive">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
+                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Waktu</th>
+                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Perubahan</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {profileLogs.map(log => (
+                        <tr key={log.id} style={{ borderBottom: '1px solid #334155' }}>
+                          <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)', verticalAlign: 'top' }}>
+                            {new Date(log.created_at).toLocaleString('id-ID')}
+                          </td>
+                          <td style={{ padding: '0.5rem' }}>
+                            <strong>{log.change_type.toUpperCase()}:</strong><br />
+                            {log.change_type === 'avatar' ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem' }}>
+                                <div style={{ textAlign: 'center' }}>
+                                  <img src={log.old_value} alt="Old" style={{ width: 48, height: 48, borderRadius: '50%', border: '2px solid #ef4444', opacity: 0.6 }} />
+                                  <div style={{ color: '#ef4444', fontSize: '0.7rem' }}>Lama</div>
+                                </div>
+                                <span style={{ color: 'var(--text-muted)' }}>→</span>
+                                <div style={{ textAlign: 'center' }}>
+                                  <img src={log.new_value} alt="New" style={{ width: 48, height: 48, borderRadius: '50%', border: '2px solid #22c55e' }} />
+                                  <div style={{ color: '#22c55e', fontSize: '0.7rem' }}>Baru</div>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <span style={{ color: '#ef4444', textDecoration: 'line-through' }}>{log.old_value}</span><br />
+                                <span style={{ color: '#22c55e' }}>{log.new_value}</span>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 {hasMoreProfile && (
                   <div style={{ textAlign: 'center', marginTop: '1rem', paddingBottom: '0.5rem' }}>
                     <button
@@ -615,46 +616,48 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Belum ada teman yang ditambahkan.</div>
             ) : (
               <>
-                <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
-                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Profil</th>
-                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Status Lacak</th>
-                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Note User</th>
-                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Waktu Ditambahkan</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {friendsList.map(f => (
-                      <tr key={f.id} style={{ borderBottom: '1px solid #334155' }}>
-                        <td style={{ padding: '0.5rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            {f.avatar_url ? (
-                              <img src={f.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%' }} />
-                            ) : (
-                              <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#334155' }} />
-                            )}
-                            <div>
-                              <div style={{ fontWeight: 600 }}>{f.friend_display_name || f.friend_username}</div>
-                              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>@{f.friend_username}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ padding: '0.5rem', fontSize: '0.9rem' }}>
-                          <span style={{ color: f.status === 'active' ? '#22c55e' : '#ef4444' }}>
-                            {f.status === 'active' ? 'Aktif' : 'Dihapus'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '0.5rem', fontSize: '0.8rem', color: f.note ? '#fff' : 'var(--text-muted)', fontStyle: f.note ? 'normal' : 'italic' }}>
-                          {f.note || '-'}
-                        </td>
-                        <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                          {f.created_at}
-                        </td>
+                <div className="table-responsive">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
+                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Profil</th>
+                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Status Lacak</th>
+                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Note User</th>
+                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Waktu Ditambahkan</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {friendsList.map(f => (
+                        <tr key={f.id} style={{ borderBottom: '1px solid #334155' }}>
+                          <td style={{ padding: '0.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                              {f.avatar_url ? (
+                                <img src={f.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%' }} />
+                              ) : (
+                                <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#334155' }} />
+                              )}
+                              <div>
+                                <div style={{ fontWeight: 600 }}>{f.friend_display_name || f.friend_username}</div>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>@{f.friend_username}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: '0.5rem', fontSize: '0.9rem' }}>
+                            <span style={{ color: f.status === 'active' ? '#22c55e' : '#ef4444' }}>
+                              {f.status === 'active' ? 'Aktif' : 'Dihapus'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.5rem', fontSize: '0.8rem', color: f.note ? '#fff' : 'var(--text-muted)', fontStyle: f.note ? 'normal' : 'italic' }}>
+                            {f.note || '-'}
+                          </td>
+                          <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                            {f.created_at}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 {hasMoreFriends && (
                   <div style={{ textAlign: 'center', marginTop: '1rem', paddingBottom: '0.5rem' }}>
                     <button
@@ -675,56 +678,58 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
             trackersList.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Pengguna ini belum dilacak oleh siapa pun.</div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
-                    <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Dilacak Oleh</th>
-                    <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Tipe Akun</th>
-                    <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Status Lacak</th>
-                    <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Note Pelacak</th>
-                    <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Sejak</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {trackersList.map(t => (
-                    <tr key={t.id} style={{ borderBottom: '1px solid #334155' }}>
-                      <td style={{ padding: '0.5rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          {t.avatar_url ? (
-                            <img src={t.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%' }} />
-                          ) : (
-                            <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#334155' }} />
-                          )}
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{t.roblox_display_name || t.roblox_username}</div>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>@{t.roblox_username}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: '0.5rem', fontSize: '0.9rem' }}>
-                        <span style={{
-                          padding: '0.2rem 0.5rem', borderRadius: '0.5rem', fontSize: '0.8rem',
-                          background: t.role_name === 'Synced Friend' ? 'rgba(100,116,139,0.15)' : 'rgba(59,130,246,0.15)',
-                          color: t.role_name === 'Synced Friend' ? '#94a3b8' : '#60a5fa'
-                        }}>
-                          {t.role_name}
-                        </span>
-                      </td>
-                      <td style={{ padding: '0.5rem', fontSize: '0.9rem' }}>
-                        <span style={{ color: t.status === 'active' ? '#22c55e' : '#ef4444' }}>
-                          {t.status === 'active' ? 'Aktif' : 'Dihapus'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '0.5rem', fontSize: '0.8rem', color: t.note ? '#fff' : 'var(--text-muted)', fontStyle: t.note ? 'normal' : 'italic' }}>
-                        {t.note || '-'}
-                      </td>
-                      <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                        {new Date(t.created_at).toLocaleString('id-ID')}
-                      </td>
+              <div className="table-responsive">
+                <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
+                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Dilacak Oleh</th>
+                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Tipe Akun</th>
+                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Status Lacak</th>
+                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Note Pelacak</th>
+                      <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Sejak</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {trackersList.map(t => (
+                      <tr key={t.id} style={{ borderBottom: '1px solid #334155' }}>
+                        <td style={{ padding: '0.5rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            {t.avatar_url ? (
+                              <img src={t.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%' }} />
+                            ) : (
+                              <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#334155' }} />
+                            )}
+                            <div>
+                              <div style={{ fontWeight: 600 }}>{t.roblox_display_name || t.roblox_username}</div>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>@{t.roblox_username}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.5rem', fontSize: '0.9rem' }}>
+                          <span style={{
+                            padding: '0.2rem 0.5rem', borderRadius: '0.5rem', fontSize: '0.8rem',
+                            background: t.role_name === 'Synced Friend' ? 'rgba(100,116,139,0.15)' : 'rgba(59,130,246,0.15)',
+                            color: t.role_name === 'Synced Friend' ? '#94a3b8' : '#60a5fa'
+                          }}>
+                            {t.role_name}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.5rem', fontSize: '0.9rem' }}>
+                          <span style={{ color: t.status === 'active' ? '#22c55e' : '#ef4444' }}>
+                            {t.status === 'active' ? 'Aktif' : 'Dihapus'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.5rem', fontSize: '0.8rem', color: t.note ? '#fff' : 'var(--text-muted)', fontStyle: t.note ? 'normal' : 'italic' }}>
+                          {t.note || '-'}
+                        </td>
+                        <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                          {new Date(t.created_at).toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )
           )}
         </div>

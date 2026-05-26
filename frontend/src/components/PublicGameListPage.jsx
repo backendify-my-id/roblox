@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:7000';
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:7000';
 
 export default function PublicGameListPage({ shareToken, onBack, onImportSuccess, showToast }) {
   const [list, setList] = useState(null);
@@ -29,12 +29,12 @@ export default function PublicGameListPage({ shareToken, onBack, onImportSuccess
           'Content-Type': 'application/json'
         }
       });
-      
+
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Gagal mengimpor daftar game.');
       }
-      
+
       if (showToast) showToast('Daftar game berhasil diimpor ke akun Anda! 🎮', 'success');
       if (onImportSuccess) {
         onImportSuccess();
@@ -100,7 +100,7 @@ export default function PublicGameListPage({ shareToken, onBack, onImportSuccess
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-dark)', padding: '2rem' }}>
       <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-        
+
         {/* Header */}
         <div style={{
           background: 'linear-gradient(135deg, rgba(236,72,153,0.08), rgba(139,92,246,0.08)), var(--bg-card)',
@@ -113,7 +113,7 @@ export default function PublicGameListPage({ shareToken, onBack, onImportSuccess
             {list.name}
           </h1>
           {list.description && <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '1rem', maxWidth: '600px', margin: '0 auto 1rem' }}>{list.description}</p>}
-          
+
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             <span>Dibuat oleh <strong style={{ color: '#f8fafc' }}>{list.owner?.roblox_display_name || list.owner?.roblox_username}</strong></span>
             <span>•</span>
@@ -136,12 +136,12 @@ export default function PublicGameListPage({ shareToken, onBack, onImportSuccess
                 boxShadow: '0 4px 10px rgba(236,72,153,0.25)',
                 transition: 'all 0.2s'
               }}
-              onMouseOver={e => { if(!isImporting) e.currentTarget.style.transform = 'translateY(-1px)'; }}
-              onMouseOut={e => { if(!isImporting) e.currentTarget.style.transform = 'translateY(0)'; }}
+              onMouseOver={e => { if (!isImporting) e.currentTarget.style.transform = 'translateY(-1px)'; }}
+              onMouseOut={e => { if (!isImporting) e.currentTarget.style.transform = 'translateY(0)'; }}
             >
               {isImporting ? 'Mengimpor...' : '✨ Impor List ke Akun Saya'}
             </button>
-            
+
             <button
               onClick={onBack}
               style={{
@@ -181,7 +181,7 @@ export default function PublicGameListPage({ shareToken, onBack, onImportSuccess
                 background: statusFilter === f
                   ? f === 'played' ? 'linear-gradient(135deg, #10b981, #3b82f6)'
                     : f === 'to_play' ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
-                    : 'linear-gradient(135deg, #ec4899, #8b5cf6)'
+                      : 'linear-gradient(135deg, #ec4899, #8b5cf6)'
                   : 'transparent',
                 color: statusFilter === f ? '#fff' : '#94a3b8',
                 cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500,
@@ -272,7 +272,7 @@ export default function PublicGameListPage({ shareToken, onBack, onImportSuccess
               <h2 style={{ fontWeight: 700 }}>💬 Ulasan Kelompok</h2>
               <button className="modal-close" onClick={() => setViewingReviews(null)}>×</button>
             </div>
-            
+
             <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '1rem', color: '#f8fafc' }}>{viewingReviews.roblox_map?.name || 'Tidak Diketahui'}</h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
