@@ -41,12 +41,12 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
   };
 
   // ─── USER ANALYTICS COMPUTATIONS ─────────────────────────────────────────────
-  // Filter logs for the last 7 days (rolling window)
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  sevenDaysAgo.setHours(0, 0, 0, 0);
+  // Filter logs for the last 7 distinct calendar days to avoid day-of-week index collisions
+  const sixDaysAgo = new Date();
+  sixDaysAgo.setDate(sixDaysAgo.getDate() - 6);
+  sixDaysAgo.setHours(0, 0, 0, 0);
 
-  const filteredLogs = activityLogs.filter(log => new Date(log.created_at) >= sevenDaysAgo);
+  const filteredLogs = activityLogs.filter(log => new Date(log.created_at) >= sixDaysAgo);
   const totalUserLogs = filteredLogs.length;
 
   // 1. Status Breakdown
