@@ -187,7 +187,7 @@ func GetMyActivityLogs(c *fiber.Ctx) error {
 	}
 	
 	offset := c.QueryInt("offset", 0)
-	limit := 100
+	limit := c.QueryInt("limit", 100)
 
 	var logs []models.ActivityLog
 	// Ambil semua log global atau log yang kita buat sendiri untuk kita
