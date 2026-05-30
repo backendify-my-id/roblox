@@ -33,7 +33,9 @@ const FriendCard = ({ friend, onClickLog, onClickProfileLog, onSaveNote }) => {
           {friend.friend_display_name && friend.friend_display_name !== friend.friend_username && (
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>@{friend.friend_username}</div>
           )}
-          <div className="user-id">ID: {friend.friend_roblox_id}</div>
+          <div className="user-id">
+            ID: <a href={`https://www.roblox.com/users/${friend.friend_roblox_id}/profile`} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'none', transition: 'color 0.2s' }} onMouseOver={e => e.currentTarget.style.textDecoration = 'underline'} onMouseOut={e => e.currentTarget.style.textDecoration = 'none'}>{friend.friend_roblox_id}</a>
+          </div>
         </div>
       </div>
 

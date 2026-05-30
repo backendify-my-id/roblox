@@ -71,6 +71,7 @@ func Setup(app *fiber.App) {
 	api.Get("/admin/users", middleware.RequirePermission("view_users_list"), handlers.GetAllUsers)
 	api.Put("/admin/users/:id/approve", middleware.RequirePermission("manage_user_permissions"), handlers.ApproveUser)
 	api.Get("/admin/playing-together", middleware.RequirePermission("view_playing_together"), handlers.GetPlayingTogether)
+	api.Get("/admin/playing-together/search", middleware.RequirePermission("view_playing_together"), handlers.SearchHistoricalCoPlayers)
 	api.Get("/admin/shadow-activities", middleware.RequirePermission("view_shadow_activities"), handlers.GetShadowActivities)
 	api.Put("/admin/shadow-activities/:id", middleware.RequirePermission("review_shadow_activities"), handlers.ReviewShadowActivity)
 	api.Get("/admin/users/:id/logs", middleware.RequirePermission("view_users_list"), handlers.GetUserActivityLogs)

@@ -454,6 +454,204 @@ func GetPlayingTogether(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
+func SearchHistoricalCoPlayers(c *fiber.Ctx) error {
+	roleName, _ := c.Locals("role").(string)
+	scopeFriendsOnly, _ := c.Locals("scope_friends_only").(bool)
+
+	mapName := c.Query("map_name")
+	dateStr := c.Query("date")       // YYYY-MM-DD
+	hourVal := c.QueryInt("hour", 8) // 0-23
+
+	if dateStr == "" {
+		dateStr = time.Now().Format("2006-01-02")
+	}
+
+	// Parse date in local timezone
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		loc = time.Local
+	}
+
+	// T_start = YYYY-MM-DD HH:00:00
+	tStart, err := time.ParseInLocation("2006-01-02 15:04:05", fmt.Sprintf("%s %02d:00:00", dateStr, hourVal), loc)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid date or hour format"})
+	}
+	tEnd := tStart.Add(1 * time.Hour)
+
+	// Fetch all users
+	var users []models.User
+	userQuery := database.DB.Preload("Role")
+	if roleName != "admin" {
+		userQuery = userQuery.Where("is_stealth = ?", false)
+	}
+	if scopeFriendsOnly {
+		requestingUserID := c.Locals("user_id")
+		var friendIDs []uint
+		database.DB.Model(&models.Friend{}).
+			Where("user_id = ? AND status = 'active'", requestingUserID).
+			Pluck("friend_id", &friendIDs)
+		if len(friendIDs) == 0 {
+			return c.JSON([]interface{}{})
+		}
+		userQuery = userQuery.Where("id IN ?", friendIDs)
+	}
+	if err := userQuery.Find(&users).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch users"})
+	}
+
+	type PlayerInfo struct {
+		ID                uint   `json:"id"`
+		RobloxUserID      string `json:"roblox_user_id"`
+		RobloxUsername    string `json:"roblox_username"`
+		RobloxDisplayName string `json:"roblox_display_name"`
+		AvatarURL         string `json:"avatar_url"`
+		RoleName          string `json:"role_name"`
+		PlayStartTime     string `json:"play_start_time"`
+	}
+
+	activePlayers := make([]PlayerInfo, 0)
+
+	// Collect user IDs to query everything in batch
+	userIDs := make([]uint, len(users))
+	for i, u := range users {
+		userIDs[i] = u.ID
+	}
+
+	if len(userIDs) == 0 {
+		return c.JSON(activePlayers)
+	}
+
+	// 1. Get the single latest log ID before tStart for each user using DISTINCT ON
+	var beforeLogIDs []uint
+	if err := database.DB.Model(&models.ActivityLog{}).
+		Where("user_id IN ? AND created_at < ?", userIDs, tStart).
+		Order("user_id, created_at DESC").
+		Select("DISTINCT ON (user_id) id").
+		Find(&beforeLogIDs).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch historical activity logs before start"})
+	}
+
+	// 2. Get all log IDs within the [tStart, tEnd] interval
+	var intervalLogIDs []uint
+	if err := database.DB.Model(&models.ActivityLog{}).
+		Where("user_id IN ? AND created_at >= ? AND created_at <= ?", userIDs, tStart, tEnd).
+		Pluck("id", &intervalLogIDs).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch activity logs in time window"})
+	}
+
+	// 3. Load all these logs preloaded with their maps in chronological order (created_at asc)
+	allLogIDs := append(beforeLogIDs, intervalLogIDs...)
+	var allLogs []models.ActivityLog
+	if len(allLogIDs) > 0 {
+		if err := database.DB.Preload("Map").
+			Where("id IN ?", allLogIDs).
+			Order("created_at asc").
+			Find(&allLogs).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to load preloaded activity logs"})
+		}
+	}
+
+	// Group the logs by UserID
+	logsByUser := make(map[uint][]models.ActivityLog)
+	for _, log := range allLogs {
+		logsByUser[log.UserID] = append(logsByUser[log.UserID], log)
+	}
+
+	// For each user, check if they were in-game on the matched map during [tStart, tEnd]
+	for _, u := range users {
+		logs := logsByUser[u.ID]
+		if len(logs) == 0 {
+			continue
+		}
+
+		wasPlaying := false
+		var sessionStart *time.Time
+
+		var currentInGameLog *models.ActivityLog
+		for i := 0; i < len(logs); i++ {
+			log := logs[i]
+			if log.Status == "In-Game" {
+				if currentInGameLog != nil {
+					// The previous In-Game session ended when this new session started!
+					start := currentInGameLog.CreatedAt
+					end := log.CreatedAt
+					
+					if start.Before(tEnd) && end.After(tStart) {
+						currentGameName := currentInGameLog.GameName
+						if currentInGameLog.Map != nil {
+							currentGameName = currentInGameLog.Map.Name
+						}
+						
+						if mapName == "" || strings.Contains(strings.ToLower(currentGameName), strings.ToLower(mapName)) {
+							wasPlaying = true
+							sessionStart = &start
+							break
+						}
+					}
+				}
+				// Start the new In-Game session from this log
+				currentInGameLog = &logs[i]
+			} else {
+				if currentInGameLog != nil {
+					start := currentInGameLog.CreatedAt
+					end := log.CreatedAt
+					
+					if start.Before(tEnd) && end.After(tStart) {
+						currentGameName := currentInGameLog.GameName
+						if currentInGameLog.Map != nil {
+							currentGameName = currentInGameLog.Map.Name
+						}
+						
+						if mapName == "" || strings.Contains(strings.ToLower(currentGameName), strings.ToLower(mapName)) {
+							wasPlaying = true
+							sessionStart = &start
+							break
+						}
+					}
+					currentInGameLog = nil
+				}
+			}
+		}
+
+		if currentInGameLog != nil && !wasPlaying {
+			start := currentInGameLog.CreatedAt
+			if start.Before(tEnd) {
+				currentGameName := currentInGameLog.GameName
+				if currentInGameLog.Map != nil {
+					currentGameName = currentInGameLog.Map.Name
+				}
+				if mapName == "" || strings.Contains(strings.ToLower(currentGameName), strings.ToLower(mapName)) {
+					wasPlaying = true
+					sessionStart = &start
+				}
+			}
+		}
+
+		if wasPlaying {
+			roleName := "Synced Friend"
+			if u.RoleID != nil {
+				roleName = u.Role.Name
+			}
+			startTimeStr := ""
+			if sessionStart != nil {
+				startTimeStr = sessionStart.In(loc).Format("15:04:05")
+			}
+			activePlayers = append(activePlayers, PlayerInfo{
+				ID:                u.ID,
+				RobloxUserID:      u.RobloxUserID,
+				RobloxUsername:    u.RobloxUsername,
+				RobloxDisplayName: u.RobloxDisplayName,
+				AvatarURL:         u.AvatarURL,
+				RoleName:          roleName,
+				PlayStartTime:     startTimeStr,
+			})
+		}
+	}
+
+	return c.JSON(activePlayers)
+}
+
 func GetShadowActivities(c *fiber.Ctx) error {
 	scopeFriendsOnly, _ := c.Locals("scope_friends_only").(bool)
 
