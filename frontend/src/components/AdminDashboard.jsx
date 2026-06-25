@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchWithAuth } from '../utils/api';
+import NetworkGraph3D from './NetworkGraph3D';
 
 const getRoleBadgeStyle = (roleName) => {
   switch (roleName?.toLowerCase()) {
@@ -1361,6 +1362,24 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
             👥 Daftar Pengguna
           </button>
         )}
+        {hasViewUsers && (
+          <button
+            onClick={() => setActiveView('network-graph')}
+            style={{
+              padding: '0.6rem 1.2rem',
+              borderRadius: '0.5rem',
+              border: activeView === 'network-graph' ? '1px solid #6366f1' : '1px solid transparent',
+              background: activeView === 'network-graph' ? 'rgba(99,102,241,0.15)' : 'transparent',
+              color: activeView === 'network-graph' ? '#818cf8' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.95rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            🕸️ Visualisasi Jaringan 3D
+          </button>
+        )}
         {hasViewCoPlayers && (
           <button
             onClick={() => setActiveView('co-players')}
@@ -2492,6 +2511,8 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
             </div>
           </div>
         </div>
+      ) : activeView === 'network-graph' ? (
+        <NetworkGraph3D showToast={showToast} />
       ) : activeView === 'logs' ? (
         <SystemLogViewer showToast={showToast} />
       ) : null}

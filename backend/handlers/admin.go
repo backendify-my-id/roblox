@@ -1013,3 +1013,66 @@ func GetUserGameHistory(c *fiber.Ctx) error {
 	return c.JSON(results)
 }
 
+func GetFriendsNetworkGraph(c *fiber.Ctx) error {
+	var dbUsers []models.User
+	if err := database.DB.Preload("Role").Find(&dbUsers).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mengambil data pengguna"})
+	}
+
+	var dbFriends []models.Friend
+	if err := database.DB.Where("status = ?", "active").Find(&dbFriends).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mengambil data relasi pertemanan"})
+	}
+
+	type Node struct {
+		ID          string `json:"id"`
+		Username    string `json:"username"`
+		DisplayName string `json:"display_name"`
+		AvatarURL   string `json:"avatar_url"`
+		Presence    string `json:"presence"`
+		GameName    string `json:"game_name"`
+		Role        string `json:"role"`
+	}
+
+	type Link struct {
+		Source string `json:"source"`
+		Target string `json:"target"`
+		Type   string `json:"type"`
+	}
+
+	var nodes []Node
+	for _, u := range dbUsers {
+		roleName := "Friend"
+		if u.RoleID != nil && u.Role.Name != "" {
+			roleName = u.Role.Name
+		} else if u.PasswordHash != "" {
+			roleName = "User"
+		}
+
+		nodes = append(nodes, Node{
+			ID:          fmt.Sprintf("%d", u.ID),
+			Username:    u.RobloxUsername,
+			DisplayName: u.RobloxDisplayName,
+			AvatarURL:   u.AvatarURL,
+			Presence:    u.CurrentPresence,
+			GameName:    u.CurrentGameName,
+			Role:        roleName,
+		})
+	}
+
+	var links []Link
+	for _, f := range dbFriends {
+		links = append(links, Link{
+			Source: fmt.Sprintf("%d", f.UserID),
+			Target: fmt.Sprintf("%d", f.FriendID),
+			Type:   "friendship",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"nodes": nodes,
+		"links": links,
+	})
+}
+
+
