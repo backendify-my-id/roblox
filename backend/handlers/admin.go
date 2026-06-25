@@ -16,14 +16,76 @@ import (
 )
 
 func GetAllUsers(c *fiber.Ctx) error {
+	page := c.QueryInt("page", 1)
+	limit := c.QueryInt("limit", 20)
+	search := strings.TrimSpace(c.Query("search", ""))
+	role := c.Query("role", "All")
+	presence := c.Query("presence", "All")
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	query := database.DB.Model(&models.User{})
+
+	if search != "" {
+		searchQuery := "%" + strings.ToLower(search) + "%"
+		query = query.Where("LOWER(roblox_username) LIKE ? OR LOWER(roblox_display_name) LIKE ?", searchQuery, searchQuery)
+	}
+
+	if role != "All" {
+		if role == "Synced Friend" {
+			query = query.Where("role_id IS NULL")
+		} else {
+			var roleModel models.Role
+			if err := database.DB.Where("name = ?", role).First(&roleModel).Error; err == nil {
+				query = query.Where("role_id = ?", roleModel.ID)
+			} else {
+				query = query.Where("role_id = 999999")
+			}
+		}
+	}
+
+	if presence != "All" {
+		query = query.Where("current_presence = ?", presence)
+	}
+
+	var totalItems int64
+	if err := query.Count(&totalItems).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to count users"})
+	}
 
 	var users []models.User
-	// Preload Role and Friends to get a count or details
-	if err := database.DB.Preload("Role").Preload("Friends").Order("created_at desc").Find(&users).Error; err != nil {
+	if err := query.Preload("Role").Order("created_at desc").Offset(offset).Limit(limit).Find(&users).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch users"})
 	}
 
-	// Buat response custom agar lebih bersih (menghitung jumlah teman)
+	userIDs := make([]uint, len(users))
+	for i, u := range users {
+		userIDs[i] = u.ID
+	}
+
+	type FriendCount struct {
+		UserID uint
+		Count  int
+	}
+	var counts []FriendCount
+	friendCounts := make(map[uint]int)
+	if len(userIDs) > 0 {
+		database.DB.Model(&models.Friend{}).
+			Select("user_id, count(*) as count").
+			Where("user_id IN ? AND status = 'active'", userIDs).
+			Group("user_id").
+			Scan(&counts)
+		for _, cn := range counts {
+			friendCounts[cn.UserID] = cn.Count
+		}
+	}
+
 	type UserResponse struct {
 		ID                uint      `json:"id"`
 		RobloxUserID      string    `json:"roblox_user_id"`
@@ -64,13 +126,27 @@ func GetAllUsers(c *fiber.Ctx) error {
 			IsApproved:        u.IsApproved,
 			RoleName:          roleName,
 			IsRegistered:      isRegistered,
-			FriendsCount:      len(u.Friends),
+			FriendsCount:      friendCounts[u.ID],
 			AdminNote:         u.AdminNote,
 			CreatedAt:         u.CreatedAt.Format("02/01/2006, 15:04:05"),
 		})
 	}
 
-	return c.JSON(res)
+	totalPages := int(totalItems / int64(limit))
+	if totalItems%int64(limit) > 0 {
+		totalPages++
+	}
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	return c.JSON(fiber.Map{
+		"data":        res,
+		"total_items": totalItems,
+		"total_pages": totalPages,
+		"page":        page,
+		"limit":       limit,
+	})
 }
 
 func ApproveUser(c *fiber.Ctx) error {
@@ -110,7 +186,7 @@ func GetUserActivityLogs(c *fiber.Ctx) error {
 	limit := c.QueryInt("limit", 100)
 
 	var logs []models.ActivityLog
-	if err := database.DB.Preload("Map").Where("user_id = ?", userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
+	if err := database.DB.Preload("Map").Preload("Owner").Where("user_id = ?", userId).Order("created_at desc").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch activity logs"})
 	}
 
@@ -793,3 +869,147 @@ func GetCronLogContent(c *fiber.Ctx) error {
 
 	return c.SendString(string(content))
 }
+
+func GetAdminStats(c *fiber.Ctx) error {
+	var totalUsers int64
+	var registeredUsers int64
+	var stealthCount int64
+
+	database.DB.Model(&models.User{}).Count(&totalUsers)
+	database.DB.Model(&models.User{}).Where("role_id IS NOT NULL").Count(&registeredUsers)
+	database.DB.Model(&models.User{}).Where("is_stealth = ?", true).Count(&stealthCount)
+
+	// Presence counts
+	type PresenceCount struct {
+		CurrentPresence string
+		Count           int64
+	}
+	var presences []PresenceCount
+	database.DB.Model(&models.User{}).Select("current_presence, count(*) as count").Group("current_presence").Scan(&presences)
+
+	presenceCounts := make(map[string]int64)
+	for _, p := range presences {
+		presenceCounts[p.CurrentPresence] = p.Count
+	}
+
+	// Role counts (only for registered users)
+	type RoleCount struct {
+		Name  string
+		Count int64
+	}
+	var roles []RoleCount
+	database.DB.Model(&models.User{}).
+		Select("roles.name as name, count(*) as count").
+		Joins("JOIN roles ON roles.id = users.role_id").
+		Group("roles.name").
+		Scan(&roles)
+
+	roleCounts := make(map[string]int64)
+	for _, r := range roles {
+		roleCounts[r.Name] = r.Count
+	}
+
+	// Registration Growth (using GORM Group by Month)
+	type GrowthCount struct {
+		Month string
+		Count int64
+	}
+	var growth []GrowthCount
+	database.DB.Model(&models.User{}).
+		Select("TO_CHAR(created_at, 'YYYY-MM') as month, count(*) as count").
+		Where("role_id IS NOT NULL").
+		Group("TO_CHAR(created_at, 'YYYY-MM')").
+		Order("TO_CHAR(created_at, 'YYYY-MM') asc").
+		Scan(&growth)
+
+	growthCounts := make(map[string]int64)
+	for _, g := range growth {
+		if g.Month != "" {
+			growthCounts[g.Month] = g.Count
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"total_users":      totalUsers,
+		"registered_users": registeredUsers,
+		"stealth_count":    stealthCount,
+		"presence_counts":  presenceCounts,
+		"role_counts":      roleCounts,
+		"growth_counts":    growthCounts,
+	})
+}
+
+func GetUserGameHistory(c *fiber.Ctx) error {
+	userId := c.Params("id")
+	mapName := strings.TrimSpace(c.Query("map_name", ""))
+
+	if mapName == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Parameter map_name wajib diisi"})
+	}
+
+	var logs []models.ActivityLog
+	searchPattern := "%" + strings.ToLower(mapName) + "%"
+
+	if err := database.DB.Preload("Map").
+		Where("user_id = ? AND status = ? AND LOWER(game_name) LIKE ?", userId, "In-Game", searchPattern).
+		Order("created_at desc").
+		Find(&logs).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mengambil riwayat permainan"})
+	}
+
+	type SessionResponse struct {
+		ID        uint       `json:"id"`
+		GameName  string     `json:"game_name"`
+		StartTime time.Time  `json:"start_time"`
+		EndTime   *time.Time `json:"end_time"`
+		Duration  string     `json:"duration"`
+	}
+
+	var results []SessionResponse
+
+	for _, log := range logs {
+		var nextLog models.ActivityLog
+		err := database.DB.Where("user_id = ? AND created_at > ?", log.UserID, log.CreatedAt).
+			Order("created_at asc").
+			First(&nextLog).Error
+
+		var endTime *time.Time
+		durationStr := "-"
+
+		if err == nil {
+			endTime = &nextLog.CreatedAt
+			diff := nextLog.CreatedAt.Sub(log.CreatedAt)
+
+			hours := int(diff.Hours())
+			minutes := int(diff.Minutes()) % 60
+			seconds := int(diff.Seconds()) % 60
+
+			if hours > 0 {
+				durationStr = fmt.Sprintf("%d jam %d menit %d detik", hours, minutes, seconds)
+			} else if minutes > 0 {
+				durationStr = fmt.Sprintf("%d menit %d detik", minutes, seconds)
+			} else {
+				durationStr = fmt.Sprintf("%d detik", seconds)
+			}
+		} else {
+			var latestLog models.ActivityLog
+			latestErr := database.DB.Where("user_id = ?", log.UserID).Order("created_at desc").First(&latestLog).Error
+			if latestErr == nil && latestLog.ID == log.ID && latestLog.Status == "In-Game" {
+				durationStr = "Sedang bermain..."
+			} else {
+				durationStr = "Selesai (tidak tercatat)"
+			}
+		}
+
+		results = append(results, SessionResponse{
+			ID:        log.ID,
+			GameName:  log.GameName,
+			StartTime: log.CreatedAt,
+			EndTime:   endTime,
+			Duration:  durationStr,
+		})
+	}
+
+	return c.JSON(results)
+}
+

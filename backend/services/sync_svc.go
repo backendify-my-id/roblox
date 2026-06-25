@@ -205,11 +205,12 @@ func logChange(targetUserID uint, ownerID uint, username, changeType, oldVal, ne
 
 				if offlineDuration >= shadowThreshold {
 					shadowAct := models.ShadowActivity{
-						UserID:     targetUserID,
-						OldAvatar:  oldVal,
-						NewAvatar:  newVal,
-						IsReviewed: false,
-						AdminNotes: "",
+						UserID:          targetUserID,
+						OldAvatar:       oldVal,
+						NewAvatar:       newVal,
+						IsReviewed:      false,
+						AdminNotes:      "",
+						OfflineDuration: int(offlineDuration.Minutes()),
 					}
 					database.DB.Create(&shadowAct)
 					utils.LogCron("WARNING", "[ShadowActivity] Stealth online detected! User %s (ID %d) changed avatar while offline for %.0f minutes!",

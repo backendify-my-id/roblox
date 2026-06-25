@@ -9,6 +9,7 @@ import (
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
 	"github.com/apany/roblox-friend-tracker/services"
+	"github.com/apany/roblox-friend-tracker/utils"
 	"github.com/robfig/cron/v3"
 )
 
@@ -114,62 +115,23 @@ func syncAllPresences() {
 
 	LogCron("INFO", "[PresenceSync] Successfully acquired Redis lock '%s' for presence sync.", lockKey)
 
-	// Fetch all target user IDs from active friend linkages
-	var targetIDs []uint
-	if err := database.DB.Model(&models.Friend{}).
-		Joins("JOIN users owner ON friends.user_id = owner.id").
-		Where("friends.status = ? AND owner.is_approved = ?", "active", true).
-		Pluck("friends.friend_id", &targetIDs).Error; err != nil {
-		LogCron("ERROR", "[PresenceSync] Failed to fetch active target user IDs: %v", err)
-		return
-	}
-
 	// Fetch all approved registered users
-	var registeredIDs []uint
-	if err := database.DB.Model(&models.User{}).
-		Where("role_id IS NOT NULL AND is_approved = ?", true).
-		Pluck("id", &registeredIDs).Error; err != nil {
-		LogCron("ERROR", "[PresenceSync] Failed to fetch approved registered user IDs: %v", err)
+	var registeredUsers []models.User
+	if err := database.DB.Where("role_id IS NOT NULL AND is_approved = ?", true).Find(&registeredUsers).Error; err != nil {
+		LogCron("ERROR", "[PresenceSync] Failed to fetch approved registered users: %v", err)
 		return
 	}
 
-	// Merge and deduplicate target and registered user IDs
-	idUnionMap := make(map[uint]bool)
-	var uniqueUserIDs []uint
-	for _, id := range targetIDs {
-		if !idUnionMap[id] {
-			idUnionMap[id] = true
-			uniqueUserIDs = append(uniqueUserIDs, id)
-		}
-	}
-	for _, id := range registeredIDs {
-		if !idUnionMap[id] {
-			idUnionMap[id] = true
-			uniqueUserIDs = append(uniqueUserIDs, id)
-		}
-	}
-
-	if len(uniqueUserIDs) == 0 {
-		LogCron("INFO", "[PresenceSync] No target users or registered users to sync. Completed.")
+	if len(registeredUsers) == 0 {
+		LogCron("INFO", "[PresenceSync] No approved registered users to sync. Completed.")
 		return
 	}
 
-	// Fetch the full user objects
-	var usersToPoll []models.User
-	if err := database.DB.Where("id IN ?", uniqueUserIDs).Find(&usersToPoll).Error; err != nil {
-		LogCron("ERROR", "[PresenceSync] Failed to fetch users to poll: %v", err)
-		return
-	}
-
-	LogCron("INFO", "[PresenceSync] Found %d total users to poll (linkages + registered users).", len(usersToPoll))
-
-	// Get all stealth users and their exemptions
+	// stealthMap[AdminRobloxID][ViewerUserID] = true (means viewer CAN bypass)
 	var stealthUsers []models.User
 	if err := database.DB.Preload("StealthExempts").Where("is_stealth = ?", true).Find(&stealthUsers).Error; err != nil {
 		LogCron("ERROR", "[PresenceSync] Failed to fetch stealth users: %v", err)
 	}
-
-	// stealthMap[AdminRobloxID][ViewerUserID] = true (means viewer CAN bypass)
 	stealthMap := make(map[string]map[uint]bool)
 	for _, su := range stealthUsers {
 		exempts := make(map[uint]bool)
@@ -183,60 +145,123 @@ func syncAllPresences() {
 		LogCron("INFO", "[PresenceSync] [Stealth] Loaded %d active stealth users configuration into memory.", len(stealthMap))
 	}
 
-	// Deduplicate roblox IDs to minimize API calls
-	idMap := make(map[uint64]bool)
-	var uniqueRobloxIDs []uint64
-	for _, u := range usersToPoll {
-		rID, err := strconv.ParseUint(u.RobloxUserID, 10, 64)
-		if err == nil {
-			if !idMap[rID] {
-				idMap[rID] = true
-				uniqueRobloxIDs = append(uniqueRobloxIDs, rID)
+	// We will query Roblox Presence API for each registered user's cohort (themselves + their active friends)
+	// and merge the results into a global presence map.
+	mergedPresences := make(map[uint64]services.PresenceData)
+
+	getPresenceTypeRank := func(pType int) int {
+		switch pType {
+		case 2: // In-Game
+			return 3
+		case 3: // In-Studio
+			return 2
+		case 1: // Online
+			return 1
+		default:
+			return 0 // Offline, Invisible, etc.
+		}
+	}
+
+	for _, user := range registeredUsers {
+		var friendRobloxIDs []string
+		database.DB.Model(&models.Friend{}).
+			Joins("JOIN users ON friends.friend_id = users.id").
+			Where("friends.user_id = ? AND friends.status = ?", user.ID, "active").
+			Pluck("users.roblox_user_id", &friendRobloxIDs)
+
+		var cohortRobloxIDStrings []string
+		cohortRobloxIDStrings = append(cohortRobloxIDStrings, user.RobloxUserID)
+		cohortRobloxIDStrings = append(cohortRobloxIDStrings, friendRobloxIDs...)
+
+		if len(cohortRobloxIDStrings) == 0 {
+			continue
+		}
+
+		// Deduplicate and parse to uint64 for the API call
+		idSet := make(map[uint64]bool)
+		var cohortRobloxIDs []uint64
+		for _, idStr := range cohortRobloxIDStrings {
+			rID, parseErr := strconv.ParseUint(idStr, 10, 64)
+			if parseErr == nil && !idSet[rID] {
+				idSet[rID] = true
+				cohortRobloxIDs = append(cohortRobloxIDs, rID)
+			}
+		}
+
+		if len(cohortRobloxIDs) == 0 {
+			continue
+		}
+
+		// Decrypt user-specific cookie
+		var userCookie string
+		if user.RobloxCookie != "" {
+			decrypted, decryptErr := utils.Decrypt(user.RobloxCookie)
+			if decryptErr == nil {
+				userCookie = decrypted
+			} else {
+				LogCron("WARNING", "[PresenceSync] Gagal mendekripsi cookie untuk user '%s': %v. Menggunakan fallback global.", user.RobloxUsername, decryptErr)
+			}
+		}
+
+		// Fetch presences in batches of 100 for this cohort
+		batchSize := 100
+		for i := 0; i < len(cohortRobloxIDs); i += batchSize {
+			end := i + batchSize
+			if end > len(cohortRobloxIDs) {
+				end = len(cohortRobloxIDs)
+			}
+			batch := cohortRobloxIDs[i:end]
+
+			pData, apiErr := services.GetPresences(batch, userCookie)
+			// Fallback jika API gagal (misalnya cookie user expired/HTTP 401)
+			if apiErr != nil && userCookie != "" {
+				LogCron("WARNING", "[PresenceSync] Gagal mengambil presensi untuk batch user '%s': %v. Mencoba ulang dengan cookie global...", user.RobloxUsername, apiErr)
+				pData, apiErr = services.GetPresences(batch, "") // Call with empty cookie to fallback to global
+			}
+
+			if apiErr != nil {
+				LogCron("ERROR", "[PresenceSync] Gagal mengambil presensi batch: %v", apiErr)
+				continue
+			}
+
+			// Merge into mergedPresences
+			for k, v := range pData {
+				existing, exists := mergedPresences[k]
+				if !exists || getPresenceTypeRank(v.UserPresenceType) > getPresenceTypeRank(existing.UserPresenceType) {
+					mergedPresences[k] = v
+				}
 			}
 		}
 	}
 
-	LogCron("INFO", "[PresenceSync] Deduplicated Roblox API poll targets count: %d", len(uniqueRobloxIDs))
+	if len(mergedPresences) == 0 {
+		LogCron("INFO", "[PresenceSync] Tidak ada data presensi yang berhasil diambil. Selesai.")
+		return
+	}
 
-	// Batch into max 100 per request
-	batchSize := 100
-	presenceMap := make(map[uint64]services.PresenceData)
+	// Fetch all user records from DB that correspond to the parsed Roblox IDs in mergedPresences
+	var uniqueRobloxIDStrings []string
+	for k := range mergedPresences {
+		uniqueRobloxIDStrings = append(uniqueRobloxIDStrings, strconv.FormatUint(k, 10))
+	}
 
-	for i := 0; i < len(uniqueRobloxIDs); i += batchSize {
-		end := i + batchSize
-		if end > len(uniqueRobloxIDs) {
-			end = len(uniqueRobloxIDs)
-		}
-		batch := uniqueRobloxIDs[i:end]
-
-		LogCron("INFO", "[PresenceSync] [API Request] Fetching presence for batch [%d-%d] (size: %d)...",
-			i, end, len(batch))
-
-		pData, err := services.GetPresences(batch)
-		if err != nil {
-			LogCron("ERROR", "[PresenceSync] [API Error] Failed to fetch presences for batch [%d-%d]: %v", i, end, err)
-			continue
-		}
-
-		LogCron("INFO", "[PresenceSync] [API Response] Successfully received presence data for batch [%d-%d] (received details: %d)",
-			i, end, len(pData))
-
-		for k, v := range pData {
-			presenceMap[k] = v
-		}
+	var usersToUpdate []models.User
+	if err := database.DB.Where("roblox_user_id IN ?", uniqueRobloxIDStrings).Find(&usersToUpdate).Error; err != nil {
+		LogCron("ERROR", "[PresenceSync] Gagal mengambil user terdaftar untuk diperbarui: %v", err)
+		return
 	}
 
 	changeCount := 0
 
-	// Update users and log activities
-	for _, u := range usersToPoll {
-		rID, err := strconv.ParseUint(u.RobloxUserID, 10, 64)
-		if err != nil {
-			LogCron("ERROR", "[PresenceSync] Failed to parse RobloxUserID '%s' to uint64: %v", u.RobloxUserID, err)
+	// Update users and log activities using the merged presence data
+	for _, u := range usersToUpdate {
+		rID, parseErr := strconv.ParseUint(u.RobloxUserID, 10, 64)
+		if parseErr != nil {
+			LogCron("ERROR", "[PresenceSync] Failed to parse RobloxUserID '%s' to uint64: %v", u.RobloxUserID, parseErr)
 			continue
 		}
 
-		if p, exists := presenceMap[rID]; exists {
+		if p, exists := mergedPresences[rID]; exists {
 			statusStr := "Offline"
 			switch p.UserPresenceType {
 			case 1:
@@ -414,5 +439,5 @@ func syncAllPresences() {
 
 	duration := time.Since(startTime)
 	LogCron("INFO", "[PresenceSync] Completed. Total processed: %d targets, Status changes detected: %d, Duration: %v",
-		len(usersToPoll), changeCount, duration)
+		len(usersToUpdate), changeCount, duration)
 }

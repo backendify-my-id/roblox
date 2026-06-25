@@ -4,6 +4,7 @@ import (
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
 	"github.com/apany/roblox-friend-tracker/services"
+	"github.com/apany/roblox-friend-tracker/utils"
 	"github.com/gofiber/fiber/v2"
 	"time"
 )
@@ -61,7 +62,18 @@ func SearchRobloxGamesOnline(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Query parameter is required"})
 	}
 
-	results, err := services.SearchRobloxGames(query)
+	userID, err := getUserID(c)
+	var decryptedCookie string
+	if err == nil {
+		var user models.User
+		if err := database.DB.First(&user, userID).Error; err == nil && user.RobloxCookie != "" {
+			if dec, decErr := utils.Decrypt(user.RobloxCookie); decErr == nil {
+				decryptedCookie = dec
+			}
+		}
+	}
+
+	results, err := services.SearchRobloxGames(query, decryptedCookie)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}

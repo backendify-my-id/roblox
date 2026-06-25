@@ -1,9 +1,13 @@
 package handlers
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
 	"github.com/apany/roblox-friend-tracker/services"
+	"github.com/apany/roblox-friend-tracker/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -37,6 +41,7 @@ func GetUserSettings(c *fiber.Ctx) error {
 		"is_stealth": user.IsStealth,
 		"exempts":    exempts,
 		"role":       c.Locals("role"),
+		"has_cookie": user.RobloxCookie != "",
 	})
 }
 
@@ -215,4 +220,59 @@ func GetMyProfileChanges(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(logs)
+}
+
+func UpdateRobloxCookie(c *fiber.Ctx) error {
+	userId, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	type Request struct {
+		Cookie string `json:"cookie"`
+	}
+	req := new(Request)
+	if err := c.BodyParser(req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	trimmedCookie := strings.TrimSpace(req.Cookie)
+
+	var user models.User
+	if err := database.DB.First(&user, userId).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	if trimmedCookie == "" {
+		// Clear user's cookie (fallback to global will be used)
+		if err := database.DB.Model(&user).Update("roblox_cookie", "").Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal menghapus cookie"})
+		}
+		return c.JSON(fiber.Map{"message": "Cookie berhasil dihapus. Sistem akan menggunakan cookie global default."})
+	}
+
+	// Validate cookie against Roblox API
+	robloxID, _, valErr := services.ValidateCookie(trimmedCookie)
+	if valErr != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Cookie tidak valid: " + valErr.Error()})
+	}
+
+	// Double check that the cookie belongs to the registered user
+	userRobloxIDStr := fmt.Sprintf("%d", robloxID)
+	if user.RobloxUserID != userRobloxIDStr {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("Cookie ini milik akun Roblox dengan ID %s, sedangkan akun Anda terdaftar dengan ID %s. Cookie harus sesuai dengan akun Anda.", userRobloxIDStr, user.RobloxUserID)})
+	}
+
+	// Encrypt cookie
+	encryptedCookie, encErr := utils.Encrypt(trimmedCookie)
+	if encErr != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mengenkripsi cookie"})
+	}
+
+	// Update DB
+	if err := database.DB.Model(&user).Update("roblox_cookie", encryptedCookie).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal menyimpan cookie"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Cookie Roblox berhasil disimpan dan terenkripsi"})
 }

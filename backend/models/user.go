@@ -10,6 +10,7 @@ type User struct {
 	
 	// Dihilangkan not null agar teman yang disinkronisasi bisa masuk tanpa password
 	PasswordHash      string    `json:"-"` 
+	RobloxCookie      string    `gorm:"type:text" json:"-"`
 	
 	AvatarURL         string    `gorm:"type:text" json:"avatar_url"`
 	

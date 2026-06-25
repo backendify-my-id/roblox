@@ -201,7 +201,7 @@ function Dashboard({ user, showToast }) {
                 📋 Riwayat Saya
               </button>
 
-              {user.role === 'admin' && (
+              {user && (
                 <button
                   onClick={() => setIsSettingsOpen(true)}
                   style={{ background: 'transparent', color: '#94a3b8', border: '1px solid #334155', padding: '0.3rem 0.8rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: 'pointer' }}

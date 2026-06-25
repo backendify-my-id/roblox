@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { fetchWithAuth } from '../utils/api';
 
 const getRoleBadgeStyle = (roleName) => {
@@ -122,7 +122,7 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
     'Malam (18:00 - 00:00)': 0,
   };
   const userHourlyRaw = Array(24).fill(0);
-  
+
   filteredLogs.forEach(log => {
     const hour = new Date(log.created_at).getHours();
     userHourlyRaw[hour]++;
@@ -303,6 +303,7 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
 
   const tabs = [
     { key: 'activity', label: `📋 Activity Log` },
+    { key: 'gameHistory', label: `🎮 Riwayat Map` },
     { key: 'analytics', label: `📊 Analisis Tren` },
     { key: 'profile', label: `🔄 Perubahan Profil` },
     { key: 'friends', label: `👥 Teman (${selectedUser.friends_count || 0})` },
@@ -332,7 +333,7 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
         <div style={{ background: 'rgba(255,255,255,0.05)', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1.25rem', flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
             <span style={{ fontSize: '0.8rem', color: '#f59e0b', fontWeight: 'bold' }}>⭐ Admin Note:</span>
-            <button 
+            <button
               onClick={() => isEditingAdminNote ? handleSaveAdminNote() : setIsEditingAdminNote(true)}
               style={{ background: 'none', border: 'none', color: isEditingAdminNote ? '#22c55e' : '#3b82f6', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}
             >
@@ -340,7 +341,7 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
             </button>
           </div>
           {isEditingAdminNote ? (
-            <textarea 
+            <textarea
               value={adminNote}
               onChange={e => setAdminNote(e.target.value)}
               placeholder="Catatan rahasia khusus admin..."
@@ -387,7 +388,7 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
                       <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
                         <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Waktu</th>
                         <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Status</th>
-                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Game</th>
+                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Game / Keterangan</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -404,7 +405,11 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
                               {log.status}
                             </span>
                           </td>
-                          <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{log.game_name || '-'}</td>
+                          <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                            {log.game_name && log.game_name !== '-' ? log.game_name :
+                              (log.status === 'First Added' || log.status === 'Added Again' || log.status === 'Removed') && log.owner ?
+                                `oleh @${log.owner.roblox_username}` : '-'}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -513,16 +518,16 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
                           <div style={{ fontSize: '0.7rem', color: isToday ? '#a78bfa' : '#60a5fa', fontWeight: 'bold', marginBottom: '0.25rem', transition: 'all 0.2s' }}>
                             {count}
                           </div>
-                          <div 
-                            style={{ 
-                              width: '24px', 
-                              height: `${pct}px`, 
-                              background: isToday ? 'linear-gradient(to top, #7c3aed, #a78bfa)' : 'linear-gradient(to top, #1d4ed8, #60a5fa)', 
+                          <div
+                            style={{
+                              width: '24px',
+                              height: `${pct}px`,
+                              background: isToday ? 'linear-gradient(to top, #7c3aed, #a78bfa)' : 'linear-gradient(to top, #1d4ed8, #60a5fa)',
                               borderRadius: '4px 4px 0 0',
                               transition: 'all 0.2s ease-in-out',
                               cursor: 'pointer',
                               boxShadow: isToday ? '0 0 10px rgba(167, 139, 250, 0.4)' : '0 0 8px rgba(96, 165, 250, 0.2)'
-                            }} 
+                            }}
                             onMouseEnter={e => {
                               e.currentTarget.style.transform = 'scaleY(1.15) translateY(-5px)';
                               e.currentTarget.style.boxShadow = isToday ? '0 0 18px rgba(167, 139, 250, 0.8)' : '0 0 15px rgba(96, 165, 250, 0.6)';
@@ -554,16 +559,16 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
                           <div style={{ fontSize: '0.7rem', color: isToday ? '#fbbf24' : '#34d399', fontWeight: 'bold', marginBottom: '0.25rem', transition: 'all 0.2s' }}>
                             {count}m
                           </div>
-                          <div 
-                            style={{ 
-                              width: '24px', 
-                              height: `${pct}px`, 
-                              background: isToday ? 'linear-gradient(to top, #d97706, #fbbf24)' : 'linear-gradient(to top, #047857, #34d399)', 
+                          <div
+                            style={{
+                              width: '24px',
+                              height: `${pct}px`,
+                              background: isToday ? 'linear-gradient(to top, #d97706, #fbbf24)' : 'linear-gradient(to top, #047857, #34d399)',
                               borderRadius: '4px 4px 0 0',
                               transition: 'all 0.2s ease-in-out',
                               cursor: 'pointer',
                               boxShadow: isToday ? '0 0 10px rgba(251, 191, 36, 0.4)' : '0 0 8px rgba(52, 211, 153, 0.2)'
-                            }} 
+                            }}
                             onMouseEnter={e => {
                               e.currentTarget.style.transform = 'scaleY(1.15) translateY(-5px)';
                               e.currentTarget.style.boxShadow = isToday ? '0 0 18px rgba(251, 191, 36, 0.8)' : '0 0 15px rgba(52, 211, 153, 0.6)';
@@ -740,7 +745,7 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
                 )}
               </>
             )
-          ) : (
+          ) : activeTab === 'trackers' ? (
             trackersList.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Pengguna ini belum dilacak oleh siapa pun.</div>
             ) : (
@@ -804,9 +809,149 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
                 </table>
               </div>
             )
-          )}
+          ) : activeTab === 'gameHistory' ? (
+            <GameHistoryTab userId={selectedUser.id} showToast={showToast} />
+          ) : null}
         </div>
       </div>
+    </div>
+  );
+};
+
+// ─── Game History Tab Component ───────────────────────────────────────────────
+const GameHistoryTab = ({ userId, showToast }) => {
+  const [mapName, setMapName] = useState('');
+  const [historyLogs, setHistoryLogs] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  const handleSearch = async (e) => {
+    if (e) e.preventDefault();
+    if (!mapName.trim()) {
+      showToast('Harap masukkan nama map/game untuk dicari', 'error');
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/users/${userId}/game-history?map_name=${encodeURIComponent(mapName)}`);
+      if (!res.ok) throw new Error('Gagal memuat riwayat bermain game');
+      const data = await res.json();
+      setHistoryLogs(Array.isArray(data) ? data : []);
+      setHasSearched(true);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '0.5rem' }}>
+      <form onSubmit={handleSearch} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <div className="search-container" style={{ flex: 1, margin: 0, position: 'relative' }}>
+          <span className="search-icon" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>🎮</span>
+          <input
+            type="text"
+            placeholder="Masukkan nama map / game..."
+            value={mapName}
+            onChange={(e) => setMapName(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '0.6rem 1rem 0.6rem 2.5rem',
+              borderRadius: '0.5rem',
+              border: '1px solid var(--border)',
+              background: 'var(--bg-card)',
+              color: '#fff',
+              fontSize: '0.95rem',
+              outline: 'none',
+              transition: 'border-color 0.2s'
+            }}
+            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+            onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={isSearching}
+          style={{
+            background: 'linear-gradient(to right, #3b82f6, #60a5fa)',
+            color: '#fff',
+            border: 'none',
+            padding: '0.6rem 1.5rem',
+            borderRadius: '0.5rem',
+            cursor: isSearching ? 'not-allowed' : 'pointer',
+            fontWeight: 600,
+            transition: 'all 0.2s',
+            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.2)'
+          }}
+          onMouseEnter={(e) => {
+            if (!isSearching) {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 6px 16px rgba(59, 130, 246, 0.3)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'none';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.2)';
+          }}
+        >
+          {isSearching ? 'Mencari...' : 'Cari Riwayat'}
+        </button>
+      </form>
+
+      {isSearching ? (
+        <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
+          ⏳ Mencari data riwayat bermain...
+        </div>
+      ) : !hasSearched ? (
+        <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', borderRadius: '0.75rem', border: '1px dashed var(--border)' }}>
+          🔍 Masukkan nama map di atas untuk mencari riwayat bermain pengguna ini.
+        </div>
+      ) : historyLogs.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', borderRadius: '0.75rem', border: '1px solid var(--border)' }}>
+          📭 Tidak ada riwayat bermain map "<strong>{mapName}</strong>" untuk pengguna ini.
+        </div>
+      ) : (
+        <div className="table-responsive" style={{ background: 'var(--bg-card)', borderRadius: '0.75rem', border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)' }}>
+                <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem' }}>No</th>
+                <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem' }}>Nama Map/Game</th>
+                <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem' }}>Waktu Mulai</th>
+                <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem' }}>Waktu Selesai</th>
+                <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem' }}>Durasi Bermain</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historyLogs.map((log, idx) => (
+                <tr key={log.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'} onMouseLeave={e => e.currentTarget.style.background = ''}>
+                  <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{idx + 1}</td>
+                  <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: '#a78bfa' }}>{log.game_name}</td>
+                  <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    {new Date(log.start_time).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    {log.end_time ? new Date(log.end_time).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-'}
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem' }}>
+                    <span style={{
+                      padding: '0.2rem 0.5rem',
+                      borderRadius: '0.25rem',
+                      fontSize: '0.8rem',
+                      background: log.duration === 'Sedang bermain...' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                      color: log.duration === 'Sedang bermain...' ? '#fbbf24' : '#4ade80',
+                      border: log.duration === 'Sedang bermain...' ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)'
+                    }}>
+                      {log.duration}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
@@ -820,6 +965,30 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
   const [presenceFilter, setPresenceFilter] = useState('All');
   const [selectedUser, setSelectedUser] = useState(null);
   const [isRestoring, setIsRestoring] = useState(false);
+
+  // Pagination & Analytics Stats states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [stats, setStats] = useState(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const limitPerPage = 20;
+
+  const loaderRef = useRef(null);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+    setUsers([]);
+  }, [debouncedSearchQuery, roleFilter, presenceFilter]);
 
   const hasViewUsers = user.role === 'admin' || (user.permissions && user.permissions.includes('view_users_list'));
   const hasViewCoPlayers = user.role === 'admin' || (user.permissions && user.permissions.includes('view_playing_together'));
@@ -840,7 +1009,7 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
   const [coPlaySearchDate, setCoPlaySearchDate] = useState(() => {
     const today = new Date();
     const offset = today.getTimezoneOffset();
-    const localDate = new Date(today.getTime() - (offset*60*1000));
+    const localDate = new Date(today.getTime() - (offset * 60 * 1000));
     return localDate.toISOString().substring(0, 10);
   });
   const [coPlaySearchHour, setCoPlaySearchHour] = useState(new Date().getHours());
@@ -854,25 +1023,74 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
   const [shadowVisibleCount, setShadowVisibleCount] = useState(6);
 
   useEffect(() => {
+    let active = true;
     if (!hasViewUsers) {
-      // Pengguna tidak punya akses ke daftar user — skip fetch, langsung selesai loading
       setIsLoading(false);
       return;
     }
     const fetchUsers = async () => {
+      if (currentPage === 1) {
+        setIsLoading(true);
+      } else {
+        setIsFetchingMore(true);
+      }
       try {
-        const res = await fetchWithAuth('/api/admin/users');
+        const queryParams = new URLSearchParams({
+          page: currentPage,
+          limit: limitPerPage,
+          search: debouncedSearchQuery,
+          role: roleFilter,
+          presence: presenceFilter
+        });
+        const res = await fetchWithAuth(`/api/admin/users?${queryParams.toString()}`);
         if (!res.ok) throw new Error('Gagal memuat data pengguna');
         const data = await res.json();
-        setUsers(Array.isArray(data) ? data : []);
+        if (!active) return;
+
+        const fetchedData = Array.isArray(data.data) ? data.data : [];
+        setUsers(prev => currentPage === 1 ? fetchedData : [...prev, ...fetchedData]);
+        setTotalPages(data.total_pages || 1);
+        setTotalItems(data.total_items || 0);
       } catch (err) {
-        showToast(err.message, 'error');
+        if (active) showToast(err.message, 'error');
       } finally {
-        setIsLoading(false);
+        if (active) {
+          setIsLoading(false);
+          setIsFetchingMore(false);
+        }
       }
     };
     fetchUsers();
-  }, [showToast, hasViewUsers]);
+    return () => {
+      active = false;
+    };
+  }, [currentPage, debouncedSearchQuery, roleFilter, presenceFilter, hasViewUsers, showToast]);
+
+  // Intersection Observer hook for Infinite Scroll
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first.isIntersecting) {
+          if (currentPage < totalPages && !isLoading && !isFetchingMore) {
+            setCurrentPage((prev) => prev + 1);
+          }
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentLoader = loaderRef.current;
+    if (currentLoader) {
+      observer.observe(currentLoader);
+    }
+
+    return () => {
+      if (currentLoader) {
+        observer.unobserve(currentLoader);
+      }
+    };
+  }, [currentPage, totalPages, isLoading, isFetchingMore]);
 
   const fetchCoPlayers = async () => {
     setIsLoadingCoPlayers(true);
@@ -945,6 +1163,20 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
     }
   };
 
+  const fetchStats = async () => {
+    setIsLoadingStats(true);
+    try {
+      const res = await fetchWithAuth('/api/admin/stats');
+      if (!res.ok) throw new Error('Gagal memuat statistik sistem');
+      const data = await res.json();
+      setStats(data);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsLoadingStats(false);
+    }
+  };
+
   useEffect(() => {
     if (activeView === 'co-players') {
       fetchCoPlayers();
@@ -953,38 +1185,28 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
     } else if (activeView === 'analytics') {
       fetchCoPlayers();
       fetchShadowActivities();
+      fetchStats();
     }
   }, [activeView]);
-
-  const filteredUsers = users.filter(u => {
-    const matchSearch = u.roblox_username.toLowerCase().includes(searchQuery.toLowerCase()) || (u.roblox_display_name && u.roblox_display_name.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchRole = roleFilter === 'All' || u.role_name === roleFilter;
-
-    // In Roblox Presence, Offline might be literal 'Offline' or could be empty. We check explicitly.
-    // Assuming status are literal strings like 'Online', 'Offline', 'In-Game', 'In-Studio'.
-    const matchPresence = presenceFilter === 'All' || u.current_presence === presenceFilter;
-
-    return matchSearch && matchRole && matchPresence;
-  });
 
   const handleBackup = async () => {
     try {
       const response = await fetchWithAuth('/api/admin/backup', {
         method: 'GET'
       });
-      
+
       if (!response.ok) throw new Error('Gagal melakukan backup');
-      
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `roblox_tracker_backup_${new Date().toISOString().slice(0,10)}.sql`;
+      a.download = `roblox_tracker_backup_${new Date().toISOString().slice(0, 10)}.sql`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-      
+
       showToast('Backup berhasil diunduh', 'success');
     } catch (err) {
       showToast(err.message, 'error');
@@ -1033,26 +1255,18 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
   };
 
   // ─── ADMIN SYSTEM-WIDE ANALYTICS COMPUTATIONS ────────────────────────────────
-  const totalUsers = users.length;
-  const registeredUsers = users.filter(u => u.is_registered).length;
-  const stealthCount = users.filter(u => u.is_stealth).length;
+  const totalUsers = stats?.total_users || 0;
+  const registeredUsers = stats?.registered_users || 0;
+  const stealthCount = stats?.stealth_count || 0;
   const totalShadows = shadowActivities.length;
   const reviewedShadows = shadowActivities.filter(a => a.is_reviewed).length;
   const pendingShadows = totalShadows - reviewedShadows;
 
   // Active presence breakdown
-  const presenceCounts = users.reduce((acc, u) => {
-    acc[u.current_presence] = (acc[u.current_presence] || 0) + 1;
-    return acc;
-  }, {});
+  const presenceCounts = stats?.presence_counts || {};
 
   // Role breakdown
-  const roleCounts = users.reduce((acc, u) => {
-    if (u.is_registered) {
-      acc[u.role_name] = (acc[u.role_name] || 0) + 1;
-    }
-    return acc;
-  }, {});
+  const roleCounts = stats?.role_counts || {};
 
   // Roblox Active Game aggregation (Co-Play Groups Only)
   const globalGames = {};
@@ -1065,18 +1279,12 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
-  // Month-by-month Registration Growth (using user.created_at "2026-05-24 15:29:10")
-  const monthlyRegs = {};
-  users.forEach(u => {
-    if (u.created_at && u.is_registered) {
-      const datePart = u.created_at.split(' ')[0]; // "2026-05-24"
-      const monthStr = datePart.substring(0, 7); // "2026-05"
-      monthlyRegs[monthStr] = (monthlyRegs[monthStr] || 0) + 1;
-    }
-  });
-  const sortedRegs = Object.entries(monthlyRegs)
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .slice(-6); // last 6 months
+  // Month-by-month Registration Growth
+  const sortedRegs = stats?.growth_counts
+    ? Object.entries(stats.growth_counts)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .slice(-6)
+    : [];
   const maxRegVal = Math.max(...sortedRegs.map(r => r[1]), 1);
 
   return (
@@ -1277,7 +1485,7 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
             </div>
 
             <div style={{ color: 'var(--text-muted)' }}>
-              Total Data: <strong>{filteredUsers.length}</strong>
+              Total Data: <strong>{totalItems}</strong>
             </div>
           </div>
 
@@ -1299,12 +1507,12 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredUsers.length === 0 ? (
+                  {users.length === 0 ? (
                     <tr>
                       <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Tidak ada data ditemukan</td>
                     </tr>
                   ) : (
-                    filteredUsers.map(u => (
+                    users.map(u => (
                       <tr
                         key={u.id}
                         onClick={() => setSelectedUser(u)}
@@ -1329,90 +1537,90 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
                             </div>
                           </div>
                         </td>
-                         <td style={{ padding: '1rem' }} onClick={e => e.stopPropagation()}>
-                           {hasManagePermissions && u.is_registered ? (
-                             <select
-                               value={u.role_name}
-                               onChange={async (e) => {
-                                 const newRole = e.target.value;
-                                 try {
-                                   const res = await fetchWithAuth(`/api/admin/users/${u.id}/role`, {
-                                     method: 'PUT',
-                                     headers: { 'Content-Type': 'application/json' },
-                                     body: JSON.stringify({ role_name: newRole })
-                                   });
-                                   if (!res.ok) throw new Error('Gagal memperbarui peran');
-                                   showToast(`Peran ${u.roblox_username} berhasil diubah menjadi ${getRoleDisplayName(newRole)}`, 'success');
-                                   setUsers(prev => prev.map(usr => usr.id === u.id ? { ...usr, role_name: newRole } : usr));
-                                 } catch (err) {
-                                   showToast(err.message, 'error');
-                                 }
-                               }}
-                               style={{
-                                 ...getRoleBadgeStyle(u.role_name),
-                                 padding: '0.2rem 0.5rem',
-                                 borderRadius: '0.4rem',
-                                 fontSize: '0.85rem',
-                                 cursor: 'pointer',
-                                 outline: 'none'
-                               }}
-                             >
-                               <option value="admin">Admin</option>
-                               <option value="moderator">Moderator</option>
-                               <option value="observer">Observer</option>
-                               <option value="user">User</option>
-                             </select>
-                           ) : (
-                             <span style={{
-                               padding: '0.25rem 0.6rem',
-                               borderRadius: '1rem',
-                               fontSize: '0.8rem',
-                               ...getRoleBadgeStyle(u.role_name)
-                             }}>
-                               {getRoleDisplayName(u.role_name)}
-                             </span>
-                           )}
-                         </td>
-                         <td style={{ padding: '1rem' }} onClick={e => e.stopPropagation()}>
-                           {u.is_registered ? (
-                             u.role_name === 'admin' ? (
-                               <span style={{ fontSize: '0.82rem', color: '#34d399', fontWeight: 700 }}>✅ Auto-Approved</span>
-                             ) : (
-                               <button
-                                 onClick={async () => {
-                                   const nextVal = !u.is_approved;
-                                   try {
-                                     const res = await fetchWithAuth(`/api/admin/users/${u.id}/approve`, {
-                                       method: 'PUT',
-                                       headers: { 'Content-Type': 'application/json' },
-                                       body: JSON.stringify({ is_approved: nextVal })
-                                     });
-                                     if (!res.ok) throw new Error('Gagal mengubah status persetujuan');
-                                     showToast(`Persetujuan @${u.roblox_username} berhasil ${nextVal ? 'disetujui' : 'ditangguhkan'}`, 'success');
-                                     setUsers(prev => prev.map(usr => usr.id === u.id ? { ...usr, is_approved: nextVal } : usr));
-                                   } catch (err) {
-                                     showToast(err.message, 'error');
-                                   }
-                                 }}
-                                 style={{
-                                   padding: '0.25rem 0.6rem',
-                                   borderRadius: '0.4rem',
-                                   fontSize: '0.8rem',
-                                   cursor: 'pointer',
-                                   fontWeight: 'bold',
-                                   border: 'none',
-                                   background: u.is_approved ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                                   color: u.is_approved ? '#34d399' : '#f87171',
-                                   transition: 'all 0.2s'
-                                 }}
-                               >
-                                 {u.is_approved ? '✅ Disetujui' : '⏳ Pending'}
-                               </button>
-                             )
-                           ) : (
-                             <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>-</span>
-                           )}
-                         </td>
+                        <td style={{ padding: '1rem' }} onClick={e => e.stopPropagation()}>
+                          {hasManagePermissions && u.is_registered ? (
+                            <select
+                              value={u.role_name}
+                              onChange={async (e) => {
+                                const newRole = e.target.value;
+                                try {
+                                  const res = await fetchWithAuth(`/api/admin/users/${u.id}/role`, {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ role_name: newRole })
+                                  });
+                                  if (!res.ok) throw new Error('Gagal memperbarui peran');
+                                  showToast(`Peran ${u.roblox_username} berhasil diubah menjadi ${getRoleDisplayName(newRole)}`, 'success');
+                                  setUsers(prev => prev.map(usr => usr.id === u.id ? { ...usr, role_name: newRole } : usr));
+                                } catch (err) {
+                                  showToast(err.message, 'error');
+                                }
+                              }}
+                              style={{
+                                ...getRoleBadgeStyle(u.role_name),
+                                padding: '0.2rem 0.5rem',
+                                borderRadius: '0.4rem',
+                                fontSize: '0.85rem',
+                                cursor: 'pointer',
+                                outline: 'none'
+                              }}
+                            >
+                              <option value="admin">Admin</option>
+                              <option value="moderator">Moderator</option>
+                              <option value="observer">Observer</option>
+                              <option value="user">User</option>
+                            </select>
+                          ) : (
+                            <span style={{
+                              padding: '0.25rem 0.6rem',
+                              borderRadius: '1rem',
+                              fontSize: '0.8rem',
+                              ...getRoleBadgeStyle(u.role_name)
+                            }}>
+                              {getRoleDisplayName(u.role_name)}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '1rem' }} onClick={e => e.stopPropagation()}>
+                          {u.is_registered ? (
+                            u.role_name === 'admin' ? (
+                              <span style={{ fontSize: '0.82rem', color: '#34d399', fontWeight: 700 }}>✅ Auto-Approved</span>
+                            ) : (
+                              <button
+                                onClick={async () => {
+                                  const nextVal = !u.is_approved;
+                                  try {
+                                    const res = await fetchWithAuth(`/api/admin/users/${u.id}/approve`, {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ is_approved: nextVal })
+                                    });
+                                    if (!res.ok) throw new Error('Gagal mengubah status persetujuan');
+                                    showToast(`Persetujuan @${u.roblox_username} berhasil ${nextVal ? 'disetujui' : 'ditangguhkan'}`, 'success');
+                                    setUsers(prev => prev.map(usr => usr.id === u.id ? { ...usr, is_approved: nextVal } : usr));
+                                  } catch (err) {
+                                    showToast(err.message, 'error');
+                                  }
+                                }}
+                                style={{
+                                  padding: '0.25rem 0.6rem',
+                                  borderRadius: '0.4rem',
+                                  fontSize: '0.8rem',
+                                  cursor: 'pointer',
+                                  fontWeight: 'bold',
+                                  border: 'none',
+                                  background: u.is_approved ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                                  color: u.is_approved ? '#34d399' : '#f87171',
+                                  transition: 'all 0.2s'
+                                }}
+                              >
+                                {u.is_approved ? '✅ Disetujui' : '⏳ Pending'}
+                              </button>
+                            )
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>-</span>
+                          )}
+                        </td>
                         <td style={{ padding: '1rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <span style={{
@@ -1445,6 +1653,57 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
               </table>
             </div>
           )}
+
+          {!isLoading && (
+            <>
+              {/* Sentinel Element for Infinite Scroll */}
+              <div
+                ref={loaderRef}
+                style={{
+                  padding: '1.5rem',
+                  textAlign: 'center',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.9rem',
+                  marginTop: '1rem',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                  background: 'rgba(255, 255, 255, 0.01)',
+                  borderRadius: '0.5rem'
+                }}
+              >
+                {isFetchingMore && (
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}>
+                    <span className="spinner" style={{
+                      width: '18px',
+                      height: '18px',
+                      border: '2px solid rgba(255,255,255,0.1)',
+                      borderTopColor: '#3b82f6',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite'
+                    }} />
+                    Memuat lebih banyak data...
+                  </div>
+                )}
+                {!isFetchingMore && currentPage >= totalPages && totalItems > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 600 }}>
+                    ✨ Semua {totalItems} pengguna telah dimuat
+                  </div>
+                )}
+                {!isFetchingMore && currentPage < totalPages && (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    🔽 Gulir ke bawah untuk memuat lebih banyak
+                  </div>
+                )}
+              </div>
+
+              {/* CSS Animation for Spinner */}
+              <style>{`
+                @keyframes spin {
+                  0% { transform: rotate(0deg); }
+                  100% { transform: rotate(360deg); }
+                }
+              `}</style>
+            </>
+          )}
         </>
       ) : activeView === 'co-players' ? (
         // Co-Players View
@@ -1466,7 +1725,7 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
               Cari tahu dengan siapa saja target yang Anda pantau bermain game Roblox pada jam dan hari tertentu berdasarkan rekaman log aktivitas.
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' }}>
-              
+
               {/* Map Name Input */}
               <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>Nama Map / Game</span>
@@ -1605,11 +1864,11 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
                     {coPlaySearchResults.map((p) => (
-                      <div 
-                        key={p.id} 
-                        style={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
+                      <div
+                        key={p.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
                           justifyContent: 'space-between',
                           background: 'rgba(255,255,255,0.03)',
                           padding: '0.75rem 1rem',
@@ -1675,13 +1934,13 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }}>
                   {coPlayingGroups.map((group) => (
-                    <div 
-                      key={group.game_name} 
-                      style={{ 
-                        background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%)', 
-                        borderRadius: '1rem', 
-                        border: '1px solid rgba(255,255,255,0.05)', 
-                        padding: '1.25rem', 
+                    <div
+                      key={group.game_name}
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%)',
+                        borderRadius: '1rem',
+                        border: '1px solid rgba(255,255,255,0.05)',
+                        padding: '1.25rem',
                         boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
                         backdropFilter: 'blur(8px)',
                         WebkitBackdropFilter: 'blur(8px)',
@@ -1708,12 +1967,12 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
                             </h3>
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Roblox Map/Game</span>
                           </div>
-                          <span style={{ 
-                            background: 'rgba(34, 197, 94, 0.15)', 
-                            color: '#4ade80', 
-                            padding: '0.25rem 0.6rem', 
-                            borderRadius: '1rem', 
-                            fontSize: '0.8rem', 
+                          <span style={{
+                            background: 'rgba(34, 197, 94, 0.15)',
+                            color: '#4ade80',
+                            padding: '0.25rem 0.6rem',
+                            borderRadius: '1rem',
+                            fontSize: '0.8rem',
                             fontWeight: 'bold',
                             border: '1px solid rgba(34, 197, 94, 0.3)',
                             boxShadow: '0 0 10px rgba(34, 197, 94, 0.1)',
@@ -1726,11 +1985,11 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
                         {/* Players List */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '250px', overflowY: 'auto', paddingRight: '0.25rem' }}>
                           {group.players.map((p) => (
-                            <div 
-                              key={p.id} 
-                              style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
+                            <div
+                              key={p.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
                                 justifyContent: 'space-between',
                                 background: 'rgba(255,255,255,0.03)',
                                 padding: '0.5rem 0.75rem',
@@ -1829,410 +2088,410 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
                       {visibleShadows.map((act) => {
                         const u = act.user || {};
                         return (
-                  <div 
-                    key={act.id} 
-                    style={{ 
-                      background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%)', 
-                      borderRadius: '1rem', 
-                      border: act.is_reviewed ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(245, 158, 11, 0.2)', 
-                      padding: '1.25rem', 
-                      boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
-                      backdropFilter: 'blur(8px)',
-                      WebkitBackdropFilter: 'blur(8px)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      transition: 'transform 0.2s, border-color 0.2s',
-                      opacity: act.is_reviewed ? 0.75 : 1
-                    }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.transform = 'translateY(-4px)';
-                      e.currentTarget.style.borderColor = act.is_reviewed ? 'rgba(16, 185, 129, 0.4)' : 'rgba(245, 158, 11, 0.4)';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.transform = 'none';
-                      e.currentTarget.style.borderColor = act.is_reviewed ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)';
-                    }}
-                  >
-                    <div>
-                      {/* User Header */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.75rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          {u.avatar_url ? (
-                            <img src={u.avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', border: act.is_reviewed ? '1.5px solid #10b981' : '1.5px solid #f59e0b' }} />
-                          ) : (
-                            <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#334155' }} />
-                          )}
-                          <div>
-                            <div style={{ fontWeight: 600, color: '#fff' }}>{u.roblox_display_name || u.roblox_username}</div>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>@{u.roblox_username}</div>
+                          <div
+                            key={act.id}
+                            style={{
+                              background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%)',
+                              borderRadius: '1rem',
+                              border: act.is_reviewed ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(245, 158, 11, 0.2)',
+                              padding: '1.25rem',
+                              boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
+                              backdropFilter: 'blur(8px)',
+                              WebkitBackdropFilter: 'blur(8px)',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between',
+                              transition: 'transform 0.2s, border-color 0.2s',
+                              opacity: act.is_reviewed ? 0.75 : 1
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.transform = 'translateY(-4px)';
+                              e.currentTarget.style.borderColor = act.is_reviewed ? 'rgba(16, 185, 129, 0.4)' : 'rgba(245, 158, 11, 0.4)';
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.transform = 'none';
+                              e.currentTarget.style.borderColor = act.is_reviewed ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)';
+                            }}
+                          >
+                            <div>
+                              {/* User Header */}
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.75rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                  {u.avatar_url ? (
+                                    <img src={u.avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', border: act.is_reviewed ? '1.5px solid #10b981' : '1.5px solid #f59e0b' }} />
+                                  ) : (
+                                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#334155' }} />
+                                  )}
+                                  <div>
+                                    <div style={{ fontWeight: 600, color: '#fff' }}>{u.roblox_display_name || u.roblox_username}</div>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>@{u.roblox_username}</div>
+                                  </div>
+                                </div>
+
+                                {/* Status Badge */}
+                                <span style={{
+                                  fontSize: '0.75rem',
+                                  padding: '0.25rem 0.6rem',
+                                  borderRadius: '1rem',
+                                  background: act.is_reviewed ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                  color: act.is_reviewed ? '#34d399' : '#fbbf24',
+                                  border: act.is_reviewed ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)',
+                                  fontWeight: 'bold'
+                                }}>
+                                  {act.is_reviewed ? '✅ Ditinjau' : '⚠️ Kasus Baru'}
+                                </span>
+                              </div>
+
+                              {/* Comparison Panel */}
+                              <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem' }}>
+                                <div style={{ textAlign: 'center' }}>
+                                  <img src={act.old_avatar} alt="Old" style={{ width: 60, height: 60, borderRadius: '50%', border: '2px solid rgba(239, 68, 68, 0.4)', background: '#1e293b' }} />
+                                  <div style={{ color: '#f87171', fontSize: '0.7rem', marginTop: '0.25rem', fontWeight: 600 }}>Sebelum</div>
+                                </div>
+                                <div style={{ fontSize: '1.5rem', color: 'var(--text-muted)' }}>➔</div>
+                                <div style={{ textAlign: 'center' }}>
+                                  <img src={act.new_avatar} alt="New" style={{ width: 60, height: 60, borderRadius: '50%', border: '2px solid rgba(34, 197, 94, 0.6)', background: '#1e293b' }} />
+                                  <div style={{ color: '#4ade80', fontSize: '0.7rem', marginTop: '0.25rem', fontWeight: 600 }}>Sesudah</div>
+                                </div>
+                              </div>
+
+                              {/* Meta Details */}
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '1rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span>Waktu Deteksi:</span>
+                                  <strong style={{ color: '#fff' }}>{new Date(act.created_at).toLocaleString('id-ID')}</strong>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span>Status Terdaftar:</span>
+                                  <span style={{ color: '#ef4444', fontWeight: 'bold' }}>🔴 Offline</span>
+                                </div>
+                              </div>
+
+                              {/* Auto Conclusion AI */}
+                              <div style={{ background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.1)', borderRadius: '0.5rem', padding: '0.75rem', fontSize: '0.78rem', color: '#fbbf24', lineHeight: '1.4', marginBottom: '1rem' }}>
+                                <strong>📝 Kesimpulan Sistem:</strong><br />
+                                Pengguna mengubah kosmetik avatar Roblox secara real-time saat terdaftar <strong>Offline</strong>{act.offline_duration > 0 ? <> (selama <strong>{act.offline_duration} menit</strong>)</> : ''}. Disimpulkan sedang bermain siluman.
+                              </div>
+
+                              {/* Incident Form — selalu tampil, aksi hanya untuk yang punya izin review */}
+                              <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
+                                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem' }}>
+                                  Catatan Penyelidikan:
+                                  {!hasReviewShadow && (
+                                    <span style={{ marginLeft: '0.5rem', fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic' }}>
+                                      (hanya baca)
+                                    </span>
+                                  )}
+                                </label>
+                                <textarea
+                                  id={`notes-${act.id}`}
+                                  defaultValue={act.admin_notes}
+                                  placeholder={hasReviewShadow ? 'Tambahkan catatan penyelidikan...' : 'Tidak ada catatan penyelidikan.'}
+                                  readOnly={!hasReviewShadow}
+                                  style={{
+                                    width: '100%',
+                                    minHeight: '60px',
+                                    padding: '0.4rem 0.6rem',
+                                    borderRadius: '0.35rem',
+                                    border: '1px solid var(--border)',
+                                    background: hasReviewShadow ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.15)',
+                                    color: hasReviewShadow ? '#fff' : '#94a3b8',
+                                    fontSize: '0.8rem',
+                                    resize: hasReviewShadow ? 'vertical' : 'none',
+                                    outline: 'none',
+                                    marginBottom: hasReviewShadow ? '0.75rem' : '0',
+                                    cursor: hasReviewShadow ? 'text' : 'default',
+                                    opacity: hasReviewShadow ? 1 : 0.7
+                                  }}
+                                />
+
+                                {/* Tombol aksi — hanya untuk yang punya izin review */}
+                                {hasReviewShadow && (
+                                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button
+                                      onClick={() => {
+                                        const notes = document.getElementById(`notes-${act.id}`).value;
+                                        handleUpdateShadowActivity(act.id, !act.is_reviewed, notes);
+                                      }}
+                                      style={{
+                                        flex: 1,
+                                        padding: '0.4rem 0.75rem',
+                                        borderRadius: '0.35rem',
+                                        border: 'none',
+                                        background: act.is_reviewed ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                                        color: act.is_reviewed ? '#fbbf24' : '#34d399',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s'
+                                      }}
+                                    >
+                                      {act.is_reviewed ? '🔄 Buka Kasus' : '✅ Selesaikan'}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        const notes = document.getElementById(`notes-${act.id}`).value;
+                                        handleUpdateShadowActivity(act.id, act.is_reviewed, notes);
+                                      }}
+                                      style={{
+                                        padding: '0.4rem 0.75rem',
+                                        borderRadius: '0.35rem',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        background: 'transparent',
+                                        color: '#fff',
+                                        fontSize: '0.8rem',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s'
+                                      }}
+                                    >
+                                      💾 Simpan Catatan
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        );
+                      })}
+                    </div>
 
-                        {/* Status Badge */}
-                        <span style={{
-                          fontSize: '0.75rem',
-                          padding: '0.25rem 0.6rem',
-                          borderRadius: '1rem',
-                          background: act.is_reviewed ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                          color: act.is_reviewed ? '#34d399' : '#fbbf24',
-                          border: act.is_reviewed ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)',
-                          fontWeight: 'bold'
-                        }}>
-                          {act.is_reviewed ? '✅ Ditinjau' : '⚠️ Kasus Baru'}
-                        </span>
-                      </div>
-
-                      {/* Comparison Panel */}
-                      <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1rem' }}>
-                        <div style={{ textAlign: 'center' }}>
-                          <img src={act.old_avatar} alt="Old" style={{ width: 60, height: 60, borderRadius: '50%', border: '2px solid rgba(239, 68, 68, 0.4)', background: '#1e293b' }} />
-                          <div style={{ color: '#f87171', fontSize: '0.7rem', marginTop: '0.25rem', fontWeight: 600 }}>Sebelum</div>
-                        </div>
-                        <div style={{ fontSize: '1.5rem', color: 'var(--text-muted)' }}>➔</div>
-                        <div style={{ textAlign: 'center' }}>
-                          <img src={act.new_avatar} alt="New" style={{ width: 60, height: 60, borderRadius: '50%', border: '2px solid rgba(34, 197, 94, 0.6)', background: '#1e293b' }} />
-                          <div style={{ color: '#4ade80', fontSize: '0.7rem', marginTop: '0.25rem', fontWeight: 600 }}>Sesudah</div>
-                        </div>
-                      </div>
-
-                      {/* Meta Details */}
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '1rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>Waktu Deteksi:</span>
-                          <strong style={{ color: '#fff' }}>{new Date(act.created_at).toLocaleString('id-ID')}</strong>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>Status Terdaftar:</span>
-                          <span style={{ color: '#ef4444', fontWeight: 'bold' }}>🔴 Offline</span>
-                        </div>
-                      </div>
-
-                      {/* Auto Conclusion AI */}
-                      <div style={{ background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.1)', borderRadius: '0.5rem', padding: '0.75rem', fontSize: '0.78rem', color: '#fbbf24', lineHeight: '1.4', marginBottom: '1rem' }}>
-                        <strong>📝 Kesimpulan Sistem:</strong><br />
-                        Pengguna mengubah kosmetik avatar Roblox secara real-time saat terdaftar <strong>Offline</strong>. Disimpulkan sedang bermain siluman.
-                      </div>
-
-                      {/* Incident Form — selalu tampil, aksi hanya untuk yang punya izin review */}
-                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
-                        <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem' }}>
-                          Catatan Penyelidikan:
-                          {!hasReviewShadow && (
-                            <span style={{ marginLeft: '0.5rem', fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic' }}>
-                              (hanya baca)
-                            </span>
-                          )}
-                        </label>
-                        <textarea
-                          id={`notes-${act.id}`}
-                          defaultValue={act.admin_notes}
-                          placeholder={hasReviewShadow ? 'Tambahkan catatan penyelidikan...' : 'Tidak ada catatan penyelidikan.'}
-                          readOnly={!hasReviewShadow}
+                    {shadowVisibleCount < filteredShadows.length && (
+                      <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+                        <button
+                          onClick={() => setShadowVisibleCount(prev => prev + 6)}
                           style={{
-                            width: '100%',
-                            minHeight: '60px',
-                            padding: '0.4rem 0.6rem',
-                            borderRadius: '0.35rem',
-                            border: '1px solid var(--border)',
-                            background: hasReviewShadow ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.15)',
-                            color: hasReviewShadow ? '#fff' : '#94a3b8',
-                            fontSize: '0.8rem',
-                            resize: hasReviewShadow ? 'vertical' : 'none',
-                            outline: 'none',
-                            marginBottom: hasReviewShadow ? '0.75rem' : '0',
-                            cursor: hasReviewShadow ? 'text' : 'default',
-                            opacity: hasReviewShadow ? 1 : 0.7
+                            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(245, 158, 11, 0.1) 100%)',
+                            color: '#fbbf24',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                            padding: '0.75rem 2rem',
+                            borderRadius: '0.5rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            fontSize: '0.95rem',
+                            transition: 'all 0.2s',
+                            boxShadow: '0 4px 15px rgba(245, 158, 11, 0.05)'
+                          }}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.borderColor = 'rgba(245, 158, 11, 0.5)';
+                            e.currentTarget.style.background = 'rgba(245, 158, 11, 0.25)';
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.transform = 'none';
+                            e.currentTarget.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+                            e.currentTarget.style.background = 'rgba(245, 158, 11, 0.2)';
+                          }}
+                        >
+                          🔽 Muat Lebih Banyak ({filteredShadows.length - shadowVisibleCount} Kasus Lagi)
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      ) : activeView === 'analytics' ? (
+        // Global System Analytics View
+        <div>
+          {/* Top Cards Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.25rem', borderRadius: '1rem' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Total Pengguna Terdaftar</div>
+              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#60a5fa' }}>{registeredUsers} / {totalUsers}</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{totalUsers - registeredUsers} akun tamu terdeteksi</div>
+            </div>
+
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.25rem', borderRadius: '1rem' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Mode Siluman Aktif</div>
+              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#f87171' }}>{stealthCount} Pengguna</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{Math.round((stealthCount / (totalUsers || 1)) * 100)}% dari total pengguna</div>
+            </div>
+
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.25rem', borderRadius: '1rem' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Kasus Siluman (Shadow)</div>
+              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#fbbf24' }}>{pendingShadows} Pending</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{reviewedShadows} kasus telah ditinjau</div>
+            </div>
+
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.25rem', borderRadius: '1rem' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Kehadiran Aktif Saat Ini</div>
+              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#34d399' }}>
+                {presenceCounts['In-Game'] || 0} Bermain
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                {presenceCounts['Online'] || 0} Online · {presenceCounts['In-Studio'] || 0} Studio
+              </div>
+            </div>
+          </div>
+
+          {/* Core Analytics charts grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+
+            {/* Top Games in System */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '1rem' }}>
+              <h4 style={{ margin: '0 0 1.25rem 0', fontSize: '1rem', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                🎮 Game Paling Populer Aktif (Sistem)
+              </h4>
+              {globalTopGames.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 0', fontSize: '0.9rem' }}>Belum ada pengguna bermain game aktif.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {globalTopGames.map(([game, weight], idx) => {
+                    const percentage = Math.round((weight / globalTopGames[0][1]) * 100);
+                    return (
+                      <div key={game}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.35rem' }}>
+                          <span style={{ fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80%' }}>
+                            {idx + 1}. {game}
+                          </span>
+                          <span style={{ color: '#a78bfa', fontWeight: 'bold' }}>{weight} pemain/sesi</span>
+                        </div>
+                        <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              height: '100%',
+                              width: `${percentage}%`,
+                              background: 'linear-gradient(to right, #6366f1, #a855f7)',
+                              borderRadius: '4px',
+                              boxShadow: '0 0 8px rgba(168, 85, 247, 0.4)'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* User Role Distribution */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '1rem' }}>
+              <h4 style={{ margin: '0 0 1.25rem 0', fontSize: '1rem', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                👥 Distribusi Peran Pengguna (Role)
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {Object.entries(roleCounts).map(([role, count]) => {
+                  const totalRoles = Object.values(roleCounts).reduce((a, b) => a + b, 0);
+                  const percentage = Math.round((count / totalRoles) * 100);
+                  return (
+                    <div key={role}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.35rem' }}>
+                        <span style={{ color: '#e2e8f0', fontWeight: 600, textTransform: 'capitalize' }}>{role}</span>
+                        <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>{percentage}% ({count})</span>
+                      </div>
+                      <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            height: '100%',
+                            width: `${percentage}%`,
+                            background: 'linear-gradient(to right, #3b82f6, #60a5fa)',
+                            borderRadius: '4px',
+                            boxShadow: '0 0 8px rgba(59, 130, 246, 0.4)'
                           }}
                         />
-
-                        {/* Tombol aksi — hanya untuk yang punya izin review */}
-                        {hasReviewShadow && (
-                          <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <button
-                              onClick={() => {
-                                const notes = document.getElementById(`notes-${act.id}`).value;
-                                handleUpdateShadowActivity(act.id, !act.is_reviewed, notes);
-                              }}
-                              style={{
-                                flex: 1,
-                                padding: '0.4rem 0.75rem',
-                                borderRadius: '0.35rem',
-                                border: 'none',
-                                background: act.is_reviewed ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                                color: act.is_reviewed ? '#fbbf24' : '#34d399',
-                                fontSize: '0.8rem',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                transition: 'all 0.2s'
-                              }}
-                            >
-                              {act.is_reviewed ? '🔄 Buka Kasus' : '✅ Selesaikan'}
-                            </button>
-                            <button
-                              onClick={() => {
-                                const notes = document.getElementById(`notes-${act.id}`).value;
-                                handleUpdateShadowActivity(act.id, act.is_reviewed, notes);
-                              }}
-                              style={{
-                                padding: '0.4rem 0.75rem',
-                                borderRadius: '0.35rem',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                background: 'transparent',
-                                color: '#fff',
-                                fontSize: '0.8rem',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s'
-                              }}
-                            >
-                              💾 Simpan Catatan
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {shadowVisibleCount < filteredShadows.length && (
-              <div style={{ textAlign: 'center', marginTop: '2rem' }}>
-                <button
-                  onClick={() => setShadowVisibleCount(prev => prev + 6)}
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(245, 158, 11, 0.1) 100%)',
-                    color: '#fbbf24',
-                    border: '1px solid rgba(245, 158, 11, 0.3)',
-                    padding: '0.75rem 2rem',
-                    borderRadius: '0.5rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontSize: '0.95rem',
-                    transition: 'all 0.2s',
-                    boxShadow: '0 4px 15px rgba(245, 158, 11, 0.05)'
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.borderColor = 'rgba(245, 158, 11, 0.5)';
-                    e.currentTarget.style.background = 'rgba(245, 158, 11, 0.25)';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.transform = 'none';
-                    e.currentTarget.style.borderColor = 'rgba(245, 158, 11, 0.3)';
-                    e.currentTarget.style.background = 'rgba(245, 158, 11, 0.2)';
-                  }}
-                >
-                  🔽 Muat Lebih Banyak ({filteredShadows.length - shadowVisibleCount} Kasus Lagi)
-                </button>
+                  );
+                })}
               </div>
-            )}
-          </>
-        )}
-      </>
-    );
-  })()}
-</div>
-) : activeView === 'analytics' ? (
-  // Global System Analytics View
-  <div>
-    {/* Top Cards Grid */}
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.25rem', borderRadius: '1rem' }}>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Total Pengguna Terdaftar</div>
-        <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#60a5fa' }}>{registeredUsers} / {totalUsers}</div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{totalUsers - registeredUsers} akun tamu terdeteksi</div>
-      </div>
-
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.25rem', borderRadius: '1rem' }}>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Mode Siluman Aktif</div>
-        <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#f87171' }}>{stealthCount} Pengguna</div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{Math.round((stealthCount / (totalUsers || 1)) * 100)}% dari total pengguna</div>
-      </div>
-
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.25rem', borderRadius: '1rem' }}>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Kasus Siluman (Shadow)</div>
-        <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#fbbf24' }}>{pendingShadows} Pending</div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{reviewedShadows} kasus telah ditinjau</div>
-      </div>
-
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.25rem', borderRadius: '1rem' }}>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Kehadiran Aktif Saat Ini</div>
-        <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#34d399' }}>
-          {presenceCounts['In-Game'] || 0} Bermain
-        </div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-          {presenceCounts['Online'] || 0} Online · {presenceCounts['In-Studio'] || 0} Studio
-        </div>
-      </div>
-    </div>
-
-    {/* Core Analytics charts grid */}
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
-      
-      {/* Top Games in System */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '1rem' }}>
-        <h4 style={{ margin: '0 0 1.25rem 0', fontSize: '1rem', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          🎮 Game Paling Populer Aktif (Sistem)
-        </h4>
-        {globalTopGames.length === 0 ? (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 0', fontSize: '0.9rem' }}>Belum ada pengguna bermain game aktif.</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {globalTopGames.map(([game, weight], idx) => {
-              const percentage = Math.round((weight / globalTopGames[0][1]) * 100);
-              return (
-                <div key={game}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.35rem' }}>
-                    <span style={{ fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80%' }}>
-                      {idx + 1}. {game}
-                    </span>
-                    <span style={{ color: '#a78bfa', fontWeight: 'bold' }}>{weight} pemain/sesi</span>
-                  </div>
-                  <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
-                    <div 
-                      style={{ 
-                        height: '100%', 
-                        width: `${percentage}%`, 
-                        background: 'linear-gradient(to right, #6366f1, #a855f7)', 
-                        borderRadius: '4px',
-                        boxShadow: '0 0 8px rgba(168, 85, 247, 0.4)'
-                      }} 
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* User Role Distribution */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '1rem' }}>
-        <h4 style={{ margin: '0 0 1.25rem 0', fontSize: '1rem', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          👥 Distribusi Peran Pengguna (Role)
-        </h4>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {Object.entries(roleCounts).map(([role, count]) => {
-            const totalRoles = Object.values(roleCounts).reduce((a, b) => a + b, 0);
-            const percentage = Math.round((count / totalRoles) * 100);
-            return (
-              <div key={role}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.35rem' }}>
-                  <span style={{ color: '#e2e8f0', fontWeight: 600, textTransform: 'capitalize' }}>{role}</span>
-                  <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>{percentage}% ({count})</span>
-                </div>
-                <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div 
-                    style={{ 
-                      height: '100%', 
-                      width: `${percentage}%`, 
-                      background: 'linear-gradient(to right, #3b82f6, #60a5fa)', 
-                      borderRadius: '4px',
-                      boxShadow: '0 0 8px rgba(59, 130, 246, 0.4)'
-                    }} 
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-
-    {/* Third Row: System growth timeline */}
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '1.5rem' }}>
-      {/* Registration Growth Graph */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '1rem' }}>
-        <h4 style={{ margin: '0 0 1.25rem 0', fontSize: '1rem', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem' }}>
-          📈 Tren Pendaftaran Pengguna Baru
-        </h4>
-        {sortedRegs.length === 0 ? (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 0', fontSize: '0.9rem' }}>Belum ada data pendaftaran terdaftar.</div>
-        ) : (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', height: '140px', padding: '0 1rem 0.5rem 1rem' }}>
-            {sortedRegs.map(([month, count]) => {
-              const percentage = Math.round((count / maxRegVal) * 80) + 10;
-              return (
-                <div key={month} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-                  <div style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-                    +{count}
-                  </div>
-                  <div 
-                    style={{ 
-                      width: '28px', 
-                      height: `${percentage}px`, 
-                      background: 'linear-gradient(to top, #10b981, #34d399)', 
-                      borderRadius: '4px 4px 0 0',
-                      boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)',
-                      transition: 'height 0.5s ease-out',
-                      cursor: 'pointer'
-                    }}
-                    title={`Registrasi baru: ${count}`}
-                  />
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.5rem', fontWeight: 600 }}>
-                    {month.substring(5)}/{month.substring(2, 4)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Audit Keamanan: Shadow activities segment bar */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '1rem' }}>
-        <h4 style={{ margin: '0 0 1.25rem 0', fontSize: '1rem', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem' }}>
-          🛡️ Status Audit Deteksi Siluman (Shadow Activity)
-        </h4>
-        {totalShadows === 0 ? (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 0', fontSize: '0.9rem' }}>Aman! Tidak ada aktivitas siluman terdeteksi.</div>
-        ) : (
-          <div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Total Kejadian Terdeteksi:</span>
-              <strong style={{ color: '#fff' }}>{totalShadows} insiden</strong>
             </div>
-            
-            {/* Segmented bar */}
-            <div style={{ display: 'flex', height: '24px', borderRadius: '8px', overflow: 'hidden', marginBottom: '1.25rem', background: 'rgba(255,255,255,0.05)' }}>
-              {pendingShadows > 0 && (
-                <div 
-                  style={{ 
-                    width: `${(pendingShadows / totalShadows) * 100}%`, 
-                    background: 'linear-gradient(to right, #fbbf24, #f59e0b)',
-                    height: '100%'
-                  }}
-                  title={`Kasus Baru: ${pendingShadows}`}
-                />
-              )}
-              {reviewedShadows > 0 && (
-                <div 
-                  style={{ 
-                    width: `${(reviewedShadows / totalShadows) * 100}%`, 
-                    background: 'linear-gradient(to right, #10b981, #34d399)',
-                    height: '100%'
-                  }}
-                  title={`Ditinjau: ${reviewedShadows}`}
-                />
+          </div>
+
+          {/* Third Row: System growth timeline */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '1.5rem' }}>
+            {/* Registration Growth Graph */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '1rem' }}>
+              <h4 style={{ margin: '0 0 1.25rem 0', fontSize: '1rem', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem' }}>
+                📈 Tren Pendaftaran Pengguna Baru
+              </h4>
+              {sortedRegs.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 0', fontSize: '0.9rem' }}>Belum ada data pendaftaran terdaftar.</div>
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', height: '140px', padding: '0 1rem 0.5rem 1rem' }}>
+                  {sortedRegs.map(([month, count]) => {
+                    const percentage = Math.round((count / maxRegVal) * 80) + 10;
+                    return (
+                      <div key={month} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+                        <div style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                          +{count}
+                        </div>
+                        <div
+                          style={{
+                            width: '28px',
+                            height: `${percentage}px`,
+                            background: 'linear-gradient(to top, #10b981, #34d399)',
+                            borderRadius: '4px 4px 0 0',
+                            boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)',
+                            transition: 'height 0.5s ease-out',
+                            cursor: 'pointer'
+                          }}
+                          title={`Registrasi baru: ${count}`}
+                        />
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.5rem', fontWeight: 600 }}>
+                          {month.substring(5)}/{month.substring(2, 4)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#fbbf24' }} />
-                <strong style={{ color: '#fbbf24' }}>{Math.round((pendingShadows / totalShadows) * 100)}%</strong> ⏳ Pending / Kasus Baru ({pendingShadows} insiden)
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
-                <strong style={{ color: '#10b981' }}>{Math.round((reviewedShadows / totalShadows) * 100)}%</strong> ✅ Selesai / Ditinjau ({reviewedShadows} insiden)
-              </div>
+            {/* Audit Keamanan: Shadow activities segment bar */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '1rem' }}>
+              <h4 style={{ margin: '0 0 1.25rem 0', fontSize: '1rem', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem' }}>
+                🛡️ Status Audit Deteksi Siluman (Shadow Activity)
+              </h4>
+              {totalShadows === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 0', fontSize: '0.9rem' }}>Aman! Tidak ada aktivitas siluman terdeteksi.</div>
+              ) : (
+                <div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Total Kejadian Terdeteksi:</span>
+                    <strong style={{ color: '#fff' }}>{totalShadows} insiden</strong>
+                  </div>
+
+                  {/* Segmented bar */}
+                  <div style={{ display: 'flex', height: '24px', borderRadius: '8px', overflow: 'hidden', marginBottom: '1.25rem', background: 'rgba(255,255,255,0.05)' }}>
+                    {pendingShadows > 0 && (
+                      <div
+                        style={{
+                          width: `${(pendingShadows / totalShadows) * 100}%`,
+                          background: 'linear-gradient(to right, #fbbf24, #f59e0b)',
+                          height: '100%'
+                        }}
+                        title={`Kasus Baru: ${pendingShadows}`}
+                      />
+                    )}
+                    {reviewedShadows > 0 && (
+                      <div
+                        style={{
+                          width: `${(reviewedShadows / totalShadows) * 100}%`,
+                          background: 'linear-gradient(to right, #10b981, #34d399)',
+                          height: '100%'
+                        }}
+                        title={`Ditinjau: ${reviewedShadows}`}
+                      />
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#fbbf24' }} />
+                      <strong style={{ color: '#fbbf24' }}>{Math.round((pendingShadows / totalShadows) * 100)}%</strong> ⏳ Pending / Kasus Baru ({pendingShadows} insiden)
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
+                      <strong style={{ color: '#10b981' }}>{Math.round((reviewedShadows / totalShadows) * 100)}%</strong> ✅ Selesai / Ditinjau ({reviewedShadows} insiden)
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-        )}
-      </div>
-    </div>
-  </div>
+        </div>
       ) : activeView === 'logs' ? (
         <SystemLogViewer showToast={showToast} />
       ) : null}
@@ -2327,17 +2586,17 @@ const SystemLogViewer = ({ showToast }) => {
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>Pantau seluruh log aktivitas, keberhasilan, dan eror cronjob real-time.</p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
-          <button 
+          <button
             onClick={() => fetchLogContent(selectedFile)}
             style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
           >
             🔄 Refresh Manual
           </button>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fff', fontSize: '0.85rem', cursor: 'pointer', background: 'rgba(255,255,255,0.05)', padding: '0.5rem 1rem', borderRadius: '0.5rem', border: '1px solid var(--border)' }}>
-            <input 
-              type="checkbox" 
-              checked={autoRefresh} 
-              onChange={(e) => setAutoRefresh(e.target.checked)} 
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
               style={{ cursor: 'pointer' }}
             />
             Auto-Refresh (5s)
@@ -2349,8 +2608,8 @@ const SystemLogViewer = ({ showToast }) => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
         <div>
           <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Pilih File Log:</label>
-          <select 
-            value={selectedFile} 
+          <select
+            value={selectedFile}
             onChange={(e) => setSelectedFile(e.target.value)}
             style={{ width: '100%', padding: '0.5rem', borderRadius: '0.5rem', background: '#1e293b', border: '1px solid var(--border)', color: '#fff', fontSize: '0.85rem' }}
           >
@@ -2368,9 +2627,9 @@ const SystemLogViewer = ({ showToast }) => {
 
         <div>
           <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Cari Teks / Keyword:</label>
-          <input 
-            type="text" 
-            placeholder="Cari log..." 
+          <input
+            type="text"
+            placeholder="Cari log..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{ width: '100%', padding: '0.5rem', borderRadius: '0.5rem', background: '#1e293b', border: '1px solid var(--border)', color: '#fff', fontSize: '0.85rem' }}
@@ -2392,10 +2651,10 @@ const SystemLogViewer = ({ showToast }) => {
                   fontSize: '0.75rem',
                   fontWeight: 'bold',
                   cursor: 'pointer',
-                  background: levelFilter === lvl 
+                  background: levelFilter === lvl
                     ? (lvl === 'INFO' ? 'rgba(34,197,94,0.2)' : lvl === 'WARNING' ? 'rgba(245,158,11,0.2)' : lvl === 'ERROR' ? 'rgba(239,68,68,0.2)' : 'rgba(59,130,246,0.2)')
                     : 'rgba(255,255,255,0.05)',
-                  color: levelFilter === lvl 
+                  color: levelFilter === lvl
                     ? (lvl === 'INFO' ? '#4ade80' : lvl === 'WARNING' ? '#fbbf24' : lvl === 'ERROR' ? '#f87171' : '#60a5fa')
                     : 'var(--text-muted)'
                 }}
@@ -2408,16 +2667,16 @@ const SystemLogViewer = ({ showToast }) => {
       </div>
 
       {/* Terminal Board */}
-      <div 
-        style={{ 
-          background: '#090d16', 
-          border: '1px solid rgba(255,255,255,0.05)', 
-          borderRadius: '0.75rem', 
-          padding: '1.25rem', 
-          fontFamily: 'monospace', 
-          fontSize: '0.85rem', 
-          lineHeight: '1.6', 
-          maxHeight: '500px', 
+      <div
+        style={{
+          background: '#090d16',
+          border: '1px solid rgba(255,255,255,0.05)',
+          borderRadius: '0.75rem',
+          padding: '1.25rem',
+          fontFamily: 'monospace',
+          fontSize: '0.85rem',
+          lineHeight: '1.6',
+          maxHeight: '500px',
           overflowY: 'auto',
           boxShadow: 'inset 0 0 15px rgba(0,0,0,0.8)'
         }}

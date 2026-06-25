@@ -215,7 +215,7 @@ func GetAvatars(userIds []uint64) (map[uint64]string, error) {
 	return avatarMap, nil
 }
 
-func GetPresences(userIds []uint64) (map[uint64]PresenceData, error) {
+func GetPresences(userIds []uint64, robloxCookie string) (map[uint64]PresenceData, error) {
 	if len(userIds) == 0 {
 		return make(map[uint64]PresenceData), nil
 	}
@@ -232,7 +232,10 @@ func GetPresences(userIds []uint64) (map[uint64]PresenceData, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	cookie := os.Getenv("ROBLOSECURITY")
+	cookie := robloxCookie
+	if cookie == "" {
+		cookie = os.Getenv("ROBLOSECURITY")
+	}
 	if cookie != "" {
 		req.Header.Set("Cookie", ".ROBLOSECURITY="+cookie)
 	}
@@ -283,7 +286,7 @@ type OmniSearchResponse struct {
 	} `json:"searchResults"`
 }
 
-func SearchRobloxGames(searchQuery string) ([]OmniSearchResult, error) {
+func SearchRobloxGames(searchQuery string, robloxCookie string) ([]OmniSearchResult, error) {
 	sessionID := uuid.New().String()
 	encodedQuery := url.QueryEscape(searchQuery)
 	targetURL := fmt.Sprintf("https://apis.roblox.com/search-api/omni-search?searchQuery=%s&sessionId=%s&pageType=all", encodedQuery, sessionID)
@@ -293,7 +296,10 @@ func SearchRobloxGames(searchQuery string) ([]OmniSearchResult, error) {
 		return nil, err
 	}
 
-	cookie := os.Getenv("ROBLOSECURITY")
+	cookie := robloxCookie
+	if cookie == "" {
+		cookie = os.Getenv("ROBLOSECURITY")
+	}
 	if cookie != "" {
 		req.Header.Set("Cookie", ".ROBLOSECURITY="+cookie)
 	}
@@ -388,4 +394,33 @@ func GetUniverseIDFromPlaceID(placeID uint64) (uint64, error) {
 	}
 
 	return res.UniverseID, nil
+}
+
+func ValidateCookie(cookie string) (uint64, string, error) {
+	req, err := http.NewRequest("GET", "https://users.roblox.com/v1/users/authenticated", nil)
+	if err != nil {
+		return 0, "", err
+	}
+	req.Header.Set("Cookie", ".ROBLOSECURITY="+cookie)
+
+	waitForRateLimit()
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return 0, "", fmt.Errorf("cookie is invalid or expired (status: %d)", resp.StatusCode)
+	}
+
+	var res struct {
+		ID   uint64 `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return 0, "", err
+	}
+
+	return res.ID, res.Name, nil
 }

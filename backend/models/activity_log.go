@@ -11,6 +11,7 @@ type ActivityLog struct {
 	// Jika diisi, log ini hanya terlihat oleh pemilik ID ini (misal: "First Added")
 	// Jika NULL, log ini bersifat global (misal: "In-Game")
 	OwnerID   *uint     `gorm:"index" json:"owner_id,omitempty"` 
+	Owner     *User     `gorm:"foreignKey:OwnerID" json:"owner,omitempty"` // Relasi GORM untuk melihat siapa yang melakukan aksi 
 
 	Status    string    `gorm:"type:varchar(50);not null" json:"status"` // Offline, Online, In-Game
 	GameName  string    `gorm:"type:varchar(255)" json:"game_name"`
