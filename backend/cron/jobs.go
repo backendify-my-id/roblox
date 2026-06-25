@@ -227,8 +227,19 @@ func syncAllPresences() {
 			// Merge into mergedPresences
 			for k, v := range pData {
 				existing, exists := mergedPresences[k]
-				if !exists || getPresenceTypeRank(v.UserPresenceType) > getPresenceTypeRank(existing.UserPresenceType) {
+				if !exists {
 					mergedPresences[k] = v
+				} else {
+					vRank := getPresenceTypeRank(v.UserPresenceType)
+					exRank := getPresenceTypeRank(existing.UserPresenceType)
+					if vRank > exRank {
+						mergedPresences[k] = v
+					} else if vRank == exRank {
+						// Jika status sama (misalnya sama-sama In-Game), prioritaskan data yang memiliki nama game lebih lengkap
+						if (existing.LastLocation == "" || existing.LastLocation == "-") && v.LastLocation != "" && v.LastLocation != "-" {
+							mergedPresences[k] = v
+						}
+					}
 				}
 			}
 		}
