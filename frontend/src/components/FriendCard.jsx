@@ -39,9 +39,18 @@ const FriendCard = ({ friend, onClickLog, onClickProfileLog, onSaveNote }) => {
         </div>
       </div>
 
-      <div className="tags">
+      <div className="tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
         {friend.is_new && !isRemoved && <span className="badge badge-new" style={{ background: '#3b82f6', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.75rem' }}>Baru</span>}
-        {isRemoved && <span className="badge badge-deleted" style={{ background: '#ef4444', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.75rem' }}>Dihapus</span>}
+        {isRemoved && (
+          <>
+            <span className="badge badge-deleted" style={{ background: '#ef4444', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.75rem' }}>Dihapus</span>
+            {friend.updated_at && (
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }} title={`Dihapus pada: ${new Date(friend.updated_at).toLocaleString('id-ID')}`}>
+                ({new Date(friend.updated_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })})
+              </span>
+            )}
+          </>
+        )}
       </div>
       
       {!isRemoved && (

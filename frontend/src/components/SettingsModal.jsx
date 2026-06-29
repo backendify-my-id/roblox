@@ -11,6 +11,52 @@ const SettingsModal = ({ user, onClose, showToast }) => {
   const [hasCookie, setHasCookie] = useState(false);
   const [isSavingCookie, setIsSavingCookie] = useState(false);
 
+  // Ganti Password states
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (!currentPassword.trim() || !newPassword.trim() || !confirmPassword.trim()) {
+      showToast('Harap isi semua field password', 'error');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast('Konfirmasi password baru tidak cocok', 'error');
+      return;
+    }
+    if (newPassword.length < 6) {
+      showToast('Password baru minimal 6 karakter', 'error');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const res = await fetchWithAuth('/api/user/change-password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_password: currentPassword.trim(),
+          new_password: newPassword.trim()
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal mengubah password');
+
+      showToast('Password berhasil diperbarui', 'success');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   // Ambil status terbaru dari database saat modal dibuka
   useEffect(() => {
     const fetchSettings = async () => {
@@ -282,6 +328,72 @@ const SettingsModal = ({ user, onClose, showToast }) => {
                 </button>
               )}
             </div>
+          </div>
+
+          {/* Ganti Password Section */}
+          <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+            <h4 style={{ color: '#fff', marginBottom: '0.75rem', fontSize: '1rem' }}>Ganti Password Akun</h4>
+            <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Password Lama</label>
+                <input
+                  type="password"
+                  placeholder="Masukkan password lama..."
+                  value={currentPassword}
+                  onChange={e => setCurrentPassword(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--bg-card)', color: '#fff', fontSize: '0.85rem' }}
+                  required
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Password Baru</label>
+                  <input
+                    type="password"
+                    placeholder="Minimal 6 karakter..."
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--bg-card)', color: '#fff', fontSize: '0.85rem' }}
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Konfirmasi Password</label>
+                  <input
+                    type="password"
+                    placeholder="Ulangi password baru..."
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--bg-card)', color: '#fff', fontSize: '0.85rem' }}
+                    required
+                  />
+                </div>
+              </div>
+              {newPassword && confirmPassword && (
+                <div style={{ fontSize: '0.8rem', color: newPassword === confirmPassword ? '#4ade80' : '#f87171' }}>
+                  {newPassword === confirmPassword ? '✓ Password cocok' : '✗ Konfirmasi password tidak cocok'}
+                </div>
+              )}
+              <button
+                type="submit"
+                disabled={isChangingPassword || !currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword || newPassword.length < 6}
+                style={{
+                  width: '100%',
+                  marginTop: '0.5rem',
+                  padding: '0.6rem',
+                  borderRadius: '0.5rem',
+                  background: 'linear-gradient(to right, #3b82f6, #60a5fa)',
+                  color: '#fff',
+                  border: 'none',
+                  cursor: (isChangingPassword || newPassword !== confirmPassword || newPassword.length < 6) ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.9rem',
+                  opacity: (isChangingPassword || newPassword !== confirmPassword || newPassword.length < 6) ? 0.7 : 1
+                }}
+              >
+                {isChangingPassword ? 'Memproses...' : 'Ubah Password'}
+              </button>
+            </form>
           </div>
           
           <div style={{ marginTop: '1.5rem', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', fontStyle: 'italic' }}>

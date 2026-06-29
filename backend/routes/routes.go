@@ -31,6 +31,7 @@ func Setup(app *fiber.App) {
 	api.Get("/user/settings", handlers.GetUserSettings)
 	api.Put("/user/settings", handlers.UpdateStealthMode)
 	api.Put("/user/roblox-cookie", handlers.UpdateRobloxCookie)
+	api.Put("/user/change-password", handlers.ChangePassword)
 	api.Post("/user/stealth-exemptions", handlers.AddStealthExemption)
 	api.Delete("/user/stealth-exemptions/:id", handlers.RemoveStealthExemption)
 	api.Get("/user/logs", handlers.GetMyActivityLogs)

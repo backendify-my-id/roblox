@@ -144,6 +144,11 @@ func GetFriends(c *fiber.Ctx) error {
 			return statusI < statusJ
 		}
 
+		// Jika keduanya berstatus removed, urutkan berdasarkan UpdatedAt desc (waktu terbaru dihapus)
+		if res[i].Status == "removed" {
+			return res[i].UpdatedAt.After(res[j].UpdatedAt)
+		}
+
 		// 2. Sort by masked presence rank
 		getPresenceRank := func(p string) int {
 			switch p {

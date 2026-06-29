@@ -9,6 +9,7 @@ import (
 	"github.com/apany/roblox-friend-tracker/services"
 	"github.com/apany/roblox-friend-tracker/utils"
 	"github.com/gofiber/fiber/v2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func GetUserSettings(c *fiber.Ctx) error {
@@ -275,4 +276,52 @@ func UpdateRobloxCookie(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "Cookie Roblox berhasil disimpan dan terenkripsi"})
+}
+
+func ChangePassword(c *fiber.Ctx) error {
+	userID, err := getUserID(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	type Request struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+
+	req := new(Request)
+	if err := c.BodyParser(req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	req.CurrentPassword = strings.TrimSpace(req.CurrentPassword)
+	req.NewPassword = strings.TrimSpace(req.NewPassword)
+
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Password lama dan password baru wajib diisi"})
+	}
+
+	if len(req.NewPassword) < 6 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Password baru minimal harus 6 karakter"})
+	}
+
+	var user models.User
+	if err := database.DB.First(&user, userID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User tidak ditemukan"})
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Password lama salah"})
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal memproses password baru"})
+	}
+
+	if err := database.DB.Model(&user).Update("password_hash", string(newHash)).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal menyimpan password baru"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Password berhasil diubah"})
 }
