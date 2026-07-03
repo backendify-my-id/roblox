@@ -1,20 +1,7 @@
 version: '3.8'
 
 services:
-  # Redis Database Server (Berjalan di STB 1)
-  redis:
-    image: redis:7-alpine
-    container_name: roblox-redis
-    restart: always
-    command: redis-server --requirepass password
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    networks:
-      - roblox-network
-
-  # Backend REST API & Cron Jobs (Berjalan di STB 1)
+  # Backend REST API & Cron Jobs (Berjalan di STB 2)
   backend:
     build: ./backend
     container_name: roblox-backend
@@ -26,12 +13,10 @@ services:
     volumes:
       - ./backend/logs:/app/logs
       - ./backend/uploads:/app/uploads
-    depends_on:
-      - redis
     networks:
       - roblox-network
 
-  # Frontend Dashboard App (Berjalan di STB 1)
+  # Frontend Dashboard App (Berjalan di STB 2)
   frontend:
     build: ./frontend
     container_name: roblox-frontend
@@ -44,28 +29,6 @@ services:
       - backend
     networks:
       - roblox-network
-
-# NOTE: PostgreSQL dijalankan di STB 2 (192.168.1.11) secara mandiri.
-# Jika Anda ingin menjalankan PostgreSQL di STB 2 menggunakan Docker, jalankan compose berikut di STB 2:
-# ------------------------------------------------------------------------------
-# services:
-#   postgres:
-#     image: postgres:15-alpine
-#     container_name: roblox-postgres
-#     restart: always
-#     environment:
-#       - POSTGRES_USER=admin
-#       - POSTGRES_PASSWORD=password
-#       - POSTGRES_DB=roblox
-#     ports:
-#       - "5432:5432"
-#     volumes:
-#       - postgres-data:/var/lib/postgresql/data
-# ------------------------------------------------------------------------------
-
-volumes:
-  redis-data:
-    driver: local
 
 networks:
   roblox-network:
