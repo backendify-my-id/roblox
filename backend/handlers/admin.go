@@ -7,11 +7,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/apany/roblox-friend-tracker/cache"
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
+	"github.com/apany/roblox-friend-tracker/services"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -87,20 +90,20 @@ func GetAllUsers(c *fiber.Ctx) error {
 	}
 
 	type UserResponse struct {
-		ID                uint      `json:"id"`
-		RobloxUserID      string    `json:"roblox_user_id"`
-		RobloxUsername    string    `json:"roblox_username"`
-		RobloxDisplayName string    `json:"roblox_display_name"`
-		AvatarURL         string    `json:"avatar_url"`
-		CurrentPresence   string    `json:"current_presence"`
-		CurrentGameName   string    `json:"current_game_name"`
-		IsStealth         bool      `json:"is_stealth"`
-		IsApproved        bool      `json:"is_approved"`
-		RoleName          string    `json:"role_name"`
-		IsRegistered      bool      `json:"is_registered"`
-		FriendsCount      int       `json:"friends_count"`
-		AdminNote         string    `json:"admin_note"`
-		CreatedAt         string    `json:"created_at"`
+		ID                uint   `json:"id"`
+		RobloxUserID      string `json:"roblox_user_id"`
+		RobloxUsername    string `json:"roblox_username"`
+		RobloxDisplayName string `json:"roblox_display_name"`
+		AvatarURL         string `json:"avatar_url"`
+		CurrentPresence   string `json:"current_presence"`
+		CurrentGameName   string `json:"current_game_name"`
+		IsStealth         bool   `json:"is_stealth"`
+		IsApproved        bool   `json:"is_approved"`
+		RoleName          string `json:"role_name"`
+		IsRegistered      bool   `json:"is_registered"`
+		FriendsCount      int    `json:"friends_count"`
+		AdminNote         string `json:"admin_note"`
+		CreatedAt         string `json:"created_at"`
 	}
 
 	var res []UserResponse
@@ -253,7 +256,7 @@ func GetUserFriends(c *fiber.Ctx) error {
 func GetUserTrackers(c *fiber.Ctx) error {
 
 	userId := c.Params("id")
-	
+
 	type TrackerResult struct {
 		ID                uint      `json:"id"`
 		RobloxUserID      string    `json:"roblox_user_id"`
@@ -267,7 +270,7 @@ func GetUserTrackers(c *fiber.Ctx) error {
 	}
 
 	var results []TrackerResult
-	
+
 	query := `
 		SELECT 
 			u.id, u.roblox_user_id, u.roblox_username, u.roblox_display_name, u.avatar_url,
@@ -279,11 +282,11 @@ func GetUserTrackers(c *fiber.Ctx) error {
 		WHERE f.friend_id = ?
 		ORDER BY f.created_at DESC
 	`
-	
+
 	if err := database.DB.Raw(query, userId).Scan(&results).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch user trackers"})
 	}
-	
+
 	// Format time string if needed, but DB.Raw returns time in a string-compatible struct if scanned directly to string,
 	// though standard time format might be ugly (RFC3339). Let's use a struct with time.Time and format it.
 
@@ -407,11 +410,21 @@ func RestoreDatabase(c *fiber.Ctx) error {
 	dbname := os.Getenv("DB_NAME")
 	port := os.Getenv("DB_PORT")
 
-	if host == "" { host = "localhost" }
-	if user == "" { user = "roblox_user" }
-	if password == "" { password = "roblox_password" }
-	if dbname == "" { dbname = "roblox_tracker" }
-	if port == "" { port = "5432" }
+	if host == "" {
+		host = "localhost"
+	}
+	if user == "" {
+		user = "roblox_user"
+	}
+	if password == "" {
+		password = "roblox_password"
+	}
+	if dbname == "" {
+		dbname = "roblox_tracker"
+	}
+	if port == "" {
+		port = "5432"
+	}
 
 	// Step 1: Clean the database by dropping and recreating the public schema
 	cleanCmd := exec.Command("psql", "-h", host, "-p", port, "-U", user, "-d", dbname, "-c", "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;")
@@ -483,6 +496,17 @@ func GetPlayingTogether(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch playing users"})
 	}
 
+	for _, u := range users {
+		var uID uint64
+		if u.CurrentUniverseID != nil {
+			uID = *u.CurrentUniverseID
+		}
+		fmt.Printf("[CoPlayer Debug] User: %s (%s), GameName: '%s', UniverseID: %d\n", u.RobloxUsername, u.RobloxUserID, u.CurrentGameName, uID)
+	}
+
+	var allMaps []models.RobloxMap
+	database.DB.Find(&allMaps)
+
 	type PlayerInfo struct {
 		ID                uint   `json:"id"`
 		RobloxUserID      string `json:"roblox_user_id"`
@@ -497,7 +521,12 @@ func GetPlayingTogether(c *fiber.Ctx) error {
 		Players  []PlayerInfo `json:"players"`
 	}
 
-	groupsMap := make(map[string][]PlayerInfo)
+	type GroupInfo struct {
+		DisplayGameName string
+		Players         []PlayerInfo
+	}
+
+	groupsMap := make(map[string]*GroupInfo)
 	for _, u := range users {
 		roleName := "Synced Friend"
 		if u.RoleID != nil {
@@ -511,11 +540,62 @@ func GetPlayingTogether(c *fiber.Ctx) error {
 			AvatarURL:         u.AvatarURL,
 			RoleName:          roleName,
 		}
-		groupsMap[u.CurrentGameName] = append(groupsMap[u.CurrentGameName], p)
+
+		// Find matching map from DB (Roblox Map Database)
+		var matchedMap *models.RobloxMap
+		for i := range allMaps {
+			m := &allMaps[i]
+			// Direct ID match
+			if u.CurrentUniverseID != nil && m.UniverseID != nil && *u.CurrentUniverseID == *m.UniverseID {
+				matchedMap = m
+				break
+			}
+			// String match (case-insensitive substring)
+			mName := strings.ToLower(m.Name)
+			gName := strings.ToLower(u.CurrentGameName)
+			if len(mName) >= 3 && (strings.Contains(gName, mName) || strings.Contains(mName, gName)) {
+				matchedMap = m
+				break
+			}
+		}
+
+		var key string
+		var displayName = u.CurrentGameName
+
+		if u.CurrentUniverseID != nil && *u.CurrentUniverseID > 0 {
+			key = fmt.Sprintf("id_%d", *u.CurrentUniverseID)
+			if matchedMap != nil {
+				displayName = matchedMap.Name
+			}
+		} else if matchedMap != nil && matchedMap.UniverseID != nil && *matchedMap.UniverseID > 0 {
+			key = fmt.Sprintf("id_%d", *matchedMap.UniverseID)
+			displayName = matchedMap.Name
+		} else {
+			key = "name_" + u.CurrentGameName
+		}
+
+		if _, exists := groupsMap[key]; !exists {
+			groupsMap[key] = &GroupInfo{
+				DisplayGameName: displayName,
+				Players:         []PlayerInfo{p},
+			}
+		} else {
+			groupsMap[key].Players = append(groupsMap[key].Players, p)
+		}
+	}
+
+	// Merge by resolved display name to prevent any duplicate card rendering in UI
+	resMap := make(map[string][]PlayerInfo)
+	for _, group := range groupsMap {
+		name := strings.TrimSpace(group.DisplayGameName)
+		if name == "" {
+			name = "Unknown Game"
+		}
+		resMap[name] = append(resMap[name], group.Players...)
 	}
 
 	res := make([]GameGroup, 0)
-	for gameName, players := range groupsMap {
+	for gameName, players := range resMap {
 		res = append(res, GameGroup{
 			GameName: gameName,
 			Players:  players,
@@ -652,13 +732,13 @@ func SearchHistoricalCoPlayers(c *fiber.Ctx) error {
 					// The previous In-Game session ended when this new session started!
 					start := currentInGameLog.CreatedAt
 					end := log.CreatedAt
-					
+
 					if start.Before(tEnd) && end.After(tStart) {
 						currentGameName := currentInGameLog.GameName
 						if currentInGameLog.Map != nil {
 							currentGameName = currentInGameLog.Map.Name
 						}
-						
+
 						if mapName == "" || strings.Contains(strings.ToLower(currentGameName), strings.ToLower(mapName)) {
 							wasPlaying = true
 							sessionStart = &start
@@ -672,13 +752,13 @@ func SearchHistoricalCoPlayers(c *fiber.Ctx) error {
 				if currentInGameLog != nil {
 					start := currentInGameLog.CreatedAt
 					end := log.CreatedAt
-					
+
 					if start.Before(tEnd) && end.After(tStart) {
 						currentGameName := currentInGameLog.GameName
 						if currentInGameLog.Map != nil {
 							currentGameName = currentInGameLog.Map.Name
 						}
-						
+
 						if mapName == "" || strings.Contains(strings.ToLower(currentGameName), strings.ToLower(mapName)) {
 							wasPlaying = true
 							sessionStart = &start
@@ -1075,4 +1155,253 @@ func GetFriendsNetworkGraph(c *fiber.Ctx) error {
 	})
 }
 
+func GetCronStatus(c *fiber.Ctx) error {
+	ctx := cache.Ctx
+	rdb := cache.RDB
 
+	if rdb == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Redis connection not active"})
+	}
+
+	// 1. Get Roblox Rate Limit status
+	remainingHits := services.GetRemainingHits()
+
+	// 2. Fetch keys for cron metadata
+	keys, err := rdb.Keys(ctx, "cron_metadata:*").Result()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch cron status keys"})
+	}
+
+	type JobMetadata struct {
+		JobName        string `json:"job_name"`
+		InstanceID     int    `json:"instance_id"`
+		Status         string `json:"status"`
+		StartTime      string `json:"start_time"`
+		LastRun        string `json:"last_run"`
+		DurationMs     int64  `json:"duration_ms"`
+		ProcessedCount int    `json:"processed_count"`
+		FailedCount    int    `json:"failed_count"`
+		ChangeCount    int    `json:"change_count"`
+	}
+
+	var jobs []JobMetadata
+	for _, key := range keys {
+		data, err := rdb.HGetAll(ctx, key).Result()
+		if err != nil {
+			continue
+		}
+
+		instID, _ := strconv.Atoi(data["instance_id"])
+		durMs, _ := strconv.ParseInt(data["duration_ms"], 10, 64)
+		procCount, _ := strconv.Atoi(data["processed_count"])
+		failCount, _ := strconv.Atoi(data["failed_count"])
+		changeCount, _ := strconv.Atoi(data["change_count"])
+
+		jobs = append(jobs, JobMetadata{
+			JobName:        data["job_name"],
+			InstanceID:     instID,
+			Status:         data["status"],
+			StartTime:      data["start_time"],
+			LastRun:        data["last_run"],
+			DurationMs:     durMs,
+			ProcessedCount: procCount,
+			FailedCount:    failCount,
+			ChangeCount:    changeCount,
+		})
+	}
+
+	// Read instance configuration from Env
+	instanceID := 1
+	totalInstances := 1
+	if idStr := os.Getenv("INSTANCE_ID"); idStr != "" {
+		fmt.Sscanf(idStr, "%d", &instanceID)
+	}
+	if totalStr := os.Getenv("TOTAL_INSTANCES"); totalStr != "" {
+		fmt.Sscanf(totalStr, "%d", &totalInstances)
+	}
+
+	return c.JSON(fiber.Map{
+		"remaining_hits":  remainingHits,
+		"max_hits":        80,
+		"instance_id":     instanceID,
+		"total_instances": totalInstances,
+		"jobs":            jobs,
+	})
+}
+
+func ListAutoBackups(c *fiber.Ctx) error {
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
+	}
+
+	backupDir := "./uploads/db"
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to access backup directory"})
+	}
+
+	files, err := os.ReadDir(backupDir)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to read backup files"})
+	}
+
+	type BackupFile struct {
+		Filename  string    `json:"filename"`
+		Size      int64     `json:"size"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+
+	var backups []BackupFile
+	for _, f := range files {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".sql") {
+			continue
+		}
+		info, err := f.Info()
+		if err != nil {
+			continue
+		}
+
+		backups = append(backups, BackupFile{
+			Filename:  f.Name(),
+			Size:      info.Size(),
+			CreatedAt: info.ModTime(),
+		})
+	}
+
+	sort.Slice(backups, func(i, j int) bool {
+		return backups[i].CreatedAt.After(backups[j].CreatedAt)
+	})
+
+	return c.JSON(backups)
+}
+
+func DownloadAutoBackup(c *fiber.Ctx) error {
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
+	}
+
+	filename := c.Params("filename")
+	if filename == "" || strings.Contains(filename, "..") || strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid backup filename"})
+	}
+
+	path := filepath.Join("./uploads/db", filename)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Backup file not found"})
+	}
+
+	c.Set("Content-Disposition", "attachment; filename="+filename)
+	c.Set("Content-Type", "application/sql")
+	return c.SendFile(path)
+}
+
+func DeleteAutoBackup(c *fiber.Ctx) error {
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
+	}
+
+	filename := c.Params("filename")
+	if filename == "" || strings.Contains(filename, "..") || strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid backup filename"})
+	}
+
+	path := filepath.Join("./uploads/db", filename)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Backup file not found"})
+	}
+
+	if err := os.Remove(path); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete backup file: " + err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "Backup file deleted successfully"})
+}
+
+func TriggerAutoBackup(c *fiber.Ctx) error {
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
+	}
+
+	backupDir := "./uploads/db"
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create backup directory"})
+	}
+
+	filename := fmt.Sprintf("backup_%s.sql", time.Now().Format("20060102_150405"))
+	path := filepath.Join(backupDir, filename)
+
+	if err := services.RunDbBackup(path); err != nil {
+		fmt.Printf("[AutoBackup Error] Trigger manual backup failed: %v\n", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Backup failed: " + err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "Auto-backup triggered and saved successfully", "filename": filename})
+}
+
+func RestoreAutoBackup(c *fiber.Ctx) error {
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
+	}
+
+	filename := c.Params("filename")
+	if filename == "" || strings.Contains(filename, "..") || strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid backup filename"})
+	}
+
+	path := filepath.Join("./uploads/db", filename)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Backup file not found"})
+	}
+
+	host := os.Getenv("DB_HOST")
+	user := os.Getenv("DB_USER")
+	password := os.Getenv("DB_PASSWORD")
+	dbname := os.Getenv("DB_NAME")
+	port := os.Getenv("DB_PORT")
+
+	if host == "" {
+		host = "localhost"
+	}
+	if user == "" {
+		user = "roblox_user"
+	}
+	if password == "" {
+		password = "roblox_password"
+	}
+	if dbname == "" {
+		dbname = "roblox_tracker"
+	}
+	if port == "" {
+		port = "5432"
+	}
+
+	cleanCmd := exec.Command("psql", "-h", host, "-p", port, "-U", user, "-d", dbname, "-c", "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;")
+	cleanCmd.Env = append(os.Environ(), "PGPASSWORD="+password)
+
+	var cleanStderr bytes.Buffer
+	cleanCmd.Stderr = &cleanStderr
+	if err := cleanCmd.Run(); err != nil {
+		fmt.Printf("[Restore Error] Failed to drop existing schema: %v (details: %s)\n", err, cleanStderr.String())
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to drop existing schema: " + err.Error() + " (details: " + cleanStderr.String() + ")",
+		})
+	}
+
+	restoreCmd := exec.Command("psql", "-h", host, "-p", port, "-U", user, "-d", dbname, "-f", path)
+	restoreCmd.Env = append(os.Environ(), "PGPASSWORD="+password)
+
+	var restoreStderr bytes.Buffer
+	restoreCmd.Stderr = &restoreStderr
+	if err := restoreCmd.Run(); err != nil {
+		fmt.Printf("[Restore Error] Failed to run restore command: %v (details: %s)\n", err, restoreStderr.String())
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to run restore command: " + err.Error() + " (details: " + restoreStderr.String() + ")",
+		})
+	}
+
+	return c.JSON(fiber.Map{"message": "Database successfully restored from archive: " + filename})
+}

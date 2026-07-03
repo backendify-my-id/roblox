@@ -2,6 +2,8 @@ package cron
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -13,24 +15,102 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
+func getInstanceConfig() (int, int) {
+	instanceID := 1
+	totalInstances := 1
+
+	if idStr := os.Getenv("INSTANCE_ID"); idStr != "" {
+		if id, err := strconv.Atoi(idStr); err == nil && id > 0 {
+			instanceID = id
+		}
+	}
+	if totalStr := os.Getenv("TOTAL_INSTANCES"); totalStr != "" {
+		if total, err := strconv.Atoi(totalStr); err == nil && total > 0 {
+			totalInstances = total
+		}
+	}
+	return instanceID, totalInstances
+}
+
+func updateCronMetadata(jobName string, instanceID int, status string, start time.Time, duration time.Duration, extra map[string]interface{}) {
+	ctx := cache.Ctx
+	rdb := cache.RDB
+	if rdb == nil {
+		return
+	}
+
+	key := fmt.Sprintf("cron_metadata:%s:%d", jobName, instanceID)
+	vals := map[string]interface{}{
+		"job_name":    jobName,
+		"instance_id": instanceID,
+		"status":      status,
+		"last_run":    time.Now().Format("02/01/2006, 15:04:05"),
+	}
+	if !start.IsZero() {
+		vals["start_time"] = start.Format("02/01/2006, 15:04:05")
+	} else {
+		vals["start_time"] = "-"
+	}
+	if duration > 0 {
+		vals["duration_ms"] = int64(duration.Milliseconds())
+	} else {
+		vals["duration_ms"] = int64(0)
+	}
+
+	for k, v := range extra {
+		vals[k] = v
+	}
+
+	rdb.HSet(ctx, key, vals)
+	rdb.Expire(ctx, key, 7*24*time.Hour) // Simpan selama 7 hari
+}
+
 func StartJobs() {
 	c := cron.New()
 
 	// Every 15 minutes (Profile & Friends Sync)
 	c.AddFunc("*/15 * * * *", syncAllFriends)
 
-	// Every 5 minutes
+	// Every 5 minutes (Presence Sync)
 	c.AddFunc("*/5 * * * *", syncAllPresences)
 
+	// Every day at midnight (Auto-backup database)
+	c.AddFunc("0 0 * * *", AutoBackupDatabase)
+
 	c.Start()
-	LogCron("INFO", "Cron jobs scheduler successfully started and running in background.")
+	LogCron("INFO", "Cron jobs scheduler started.")
+}
+
+func AutoBackupDatabase() {
+	LogCron("INFO", "[AutoBackup] Starting daily database auto-backup...")
+	
+	backupDir := "./uploads/db"
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		LogCron("ERROR", "[AutoBackup] Failed to create backup directory: %v", err)
+		return
+	}
+
+	filename := fmt.Sprintf("backup_%s.sql", time.Now().Format("20060102_150405"))
+	path := filepath.Join(backupDir, filename)
+
+	if err := services.RunDbBackup(path); err != nil {
+		LogCron("ERROR", "[AutoBackup] Failed to run database backup: %v", err)
+		return
+	}
+
+	LogCron("INFO", "[AutoBackup] Daily auto-backup completed successfully. Saved to: %s", path)
 }
 
 func syncAllFriends() {
 	startTime := time.Now()
 	LogCron("INFO", "Starting 15-minute friends & profile sync job...")
 
-	lockKey := "lock:friends_sync"
+	instanceID, totalInstances := getInstanceConfig()
+	updateCronMetadata("friends_sync", instanceID, "running", startTime, 0, map[string]interface{}{
+		"processed_count": 0,
+		"failed_count":    0,
+	})
+	lockKey := fmt.Sprintf("lock:friends_sync:%d", instanceID)
 	// Try to acquire lock with 14 minutes expiration (since job runs every 15 mins)
 	acquired, err := cache.RDB.SetNX(cache.Ctx, lockKey, "locked", 14*time.Minute).Result()
 	if err != nil {
@@ -38,7 +118,7 @@ func syncAllFriends() {
 		return
 	}
 	if !acquired {
-		LogCron("WARNING", "[FriendsSync] Sync skipped: another instance is currently running the sync lock.")
+		LogCron("WARNING", "[FriendsSync] Sync skipped: another instance is currently running the sync lock for instance %d.", instanceID)
 		return
 	}
 	defer func() {
@@ -49,30 +129,27 @@ func syncAllFriends() {
 	LogCron("INFO", "[FriendsSync] Successfully acquired Redis lock '%s' for friends & profile sync.", lockKey)
 
 	var users []models.User
-	// Only sync friends for registered users who are approved
-	if err := database.DB.Where("role_id IS NOT NULL AND is_approved = ?", true).Find(&users).Error; err != nil {
+	// Only sync friends for registered users who are approved, partitioned by instance ID if multi-instance
+	dbQuery := database.DB.Where("role_id IS NOT NULL AND is_approved = ?", true)
+	if totalInstances > 1 {
+		dbQuery = dbQuery.Where("id % ? = ?", totalInstances, instanceID - 1)
+	}
+
+	if err := dbQuery.Find(&users).Error; err != nil {
 		LogCron("ERROR", "[FriendsSync] Failed to fetch approved users for friend sync: %v", err)
 		return
 	}
 
-	LogCron("INFO", "[FriendsSync] Found %d active users in database to perform friend sync for.", len(users))
+	LogCron("INFO", "[FriendsSync] [Instance %d/%d] Found %d active users in database to perform friend sync for.", instanceID, totalInstances, len(users))
 
 	successCount := 0
 	failCount := 0
 
 	for idx, user := range users {
-		checkKey := fmt.Sprintf("last_name_check:%d", user.ID)
-		checkNames := false
+		LogCron("INFO", "[FriendsSync] [%d/%d] Starting sync for user '%s' (RobloxUserID: %s)",
+			idx+1, len(users), user.RobloxUsername, user.RobloxUserID)
 
-		_, err := cache.RDB.Get(cache.Ctx, checkKey).Result()
-		if err != nil { // key doesn't exist or expired
-			checkNames = true
-		}
-
-		LogCron("INFO", "[FriendsSync] [%d/%d] Starting sync for user '%s' (RobloxUserID: %s, CheckNames: %t)",
-			idx+1, len(users), user.RobloxUsername, user.RobloxUserID, checkNames)
-
-		if err := services.SyncUserFriends(user.ID, user.RobloxUserID, checkNames); err != nil {
+		if err := services.SyncUserFriends(user.ID, user.RobloxUserID, true); err != nil {
 			LogCron("ERROR", "[FriendsSync] [%d/%d] Error syncing friends for user '%s': %v",
 				idx+1, len(users), user.RobloxUsername, err)
 			failCount++
@@ -80,24 +157,27 @@ func syncAllFriends() {
 			LogCron("INFO", "[FriendsSync] [%d/%d] Successfully synced friends for user '%s'.",
 				idx+1, len(users), user.RobloxUsername)
 			successCount++
-			if checkNames {
-				// Update the check time on success with a 1-hour TTL
-				cache.RDB.Set(cache.Ctx, checkKey, "done", 1*time.Hour)
-				LogCron("INFO", "[FriendsSync] [%d/%d] Set last_name_check key for '%s' in Redis with 1-hour TTL.",
-					idx+1, len(users), user.RobloxUsername)
-			}
 		}
 	}
 
 	duration := time.Since(startTime)
 	LogCron("INFO", "[FriendsSync] Completed. Success: %d, Failed: %d, Duration: %v", successCount, failCount, duration)
+	updateCronMetadata("friends_sync", instanceID, "idle", startTime, duration, map[string]interface{}{
+		"processed_count": successCount,
+		"failed_count":    failCount,
+	})
 }
 
 func syncAllPresences() {
 	startTime := time.Now()
 	LogCron("INFO", "Starting 5-minute active friends presence sync job...")
 
-	lockKey := "lock:presence_sync"
+	instanceID, totalInstances := getInstanceConfig()
+	updateCronMetadata("presence_sync", instanceID, "running", startTime, 0, map[string]interface{}{
+		"processed_count": 0,
+		"change_count":    0,
+	})
+	lockKey := fmt.Sprintf("lock:presence_sync:%d", instanceID)
 	// Try to acquire lock with 4 minutes expiration (since job runs every 5 mins)
 	acquired, err := cache.RDB.SetNX(cache.Ctx, lockKey, "locked", 4*time.Minute).Result()
 	if err != nil {
@@ -105,7 +185,7 @@ func syncAllPresences() {
 		return
 	}
 	if !acquired {
-		LogCron("WARNING", "[PresenceSync] Sync skipped: another instance is currently running the presence sync lock.")
+		LogCron("WARNING", "[PresenceSync] Sync skipped: another instance is currently running the presence sync lock for instance %d.", instanceID)
 		return
 	}
 	defer func() {
@@ -115,15 +195,20 @@ func syncAllPresences() {
 
 	LogCron("INFO", "[PresenceSync] Successfully acquired Redis lock '%s' for presence sync.", lockKey)
 
-	// Fetch all approved registered users
+	// Fetch all approved registered users, partitioned by instance ID if multi-instance
 	var registeredUsers []models.User
-	if err := database.DB.Where("role_id IS NOT NULL AND is_approved = ?", true).Find(&registeredUsers).Error; err != nil {
+	dbQuery := database.DB.Where("role_id IS NOT NULL AND is_approved = ?", true)
+	if totalInstances > 1 {
+		dbQuery = dbQuery.Where("id % ? = ?", totalInstances, instanceID - 1)
+	}
+
+	if err := dbQuery.Find(&registeredUsers).Error; err != nil {
 		LogCron("ERROR", "[PresenceSync] Failed to fetch approved registered users: %v", err)
 		return
 	}
 
 	if len(registeredUsers) == 0 {
-		LogCron("INFO", "[PresenceSync] No approved registered users to sync. Completed.")
+		LogCron("INFO", "[PresenceSync] [Instance %d/%d] No approved registered users to sync. Completed.", instanceID, totalInstances)
 		return
 	}
 
@@ -148,6 +233,9 @@ func syncAllPresences() {
 	// We will query Roblox Presence API for each registered user's cohort (themselves + their active friends)
 	// and merge the results into a global presence map.
 	mergedPresences := make(map[uint64]services.PresenceData)
+
+	// Set to keep track of Roblox IDs already queried in this cron execution cycle
+	queriedIDs := make(map[uint64]bool)
 
 	getPresenceTypeRank := func(pType int) int {
 		switch pType {
@@ -177,14 +265,16 @@ func syncAllPresences() {
 			continue
 		}
 
-		// Deduplicate and parse to uint64 for the API call
+		// Deduplicate and parse to uint64 for the API call, filtering out already queried IDs
 		idSet := make(map[uint64]bool)
 		var cohortRobloxIDs []uint64
 		for _, idStr := range cohortRobloxIDStrings {
 			rID, parseErr := strconv.ParseUint(idStr, 10, 64)
 			if parseErr == nil && !idSet[rID] {
 				idSet[rID] = true
-				cohortRobloxIDs = append(cohortRobloxIDs, rID)
+				if !queriedIDs[rID] {
+					cohortRobloxIDs = append(cohortRobloxIDs, rID)
+				}
 			}
 		}
 
@@ -222,6 +312,11 @@ func syncAllPresences() {
 			if apiErr != nil {
 				LogCron("ERROR", "[PresenceSync] Gagal mengambil presensi batch: %v", apiErr)
 				continue
+			}
+
+			// Mark these IDs as queried in this cycle
+			for _, id := range batch {
+				queriedIDs[id] = true
 			}
 
 			// Merge into mergedPresences
@@ -290,14 +385,24 @@ func syncAllPresences() {
 				p.LastLocation = "-"
 			}
 
-			if u.CurrentPresence != statusStr || u.CurrentGameName != p.LastLocation {
+			universeChanged := (u.CurrentUniverseID == nil && p.UniverseId != nil) || (u.CurrentUniverseID != nil && p.UniverseId == nil) || (u.CurrentUniverseID != nil && p.UniverseId != nil && *u.CurrentUniverseID != *p.UniverseId)
+			placeChanged := (u.CurrentPlaceID == nil && p.PlaceId != nil) || (u.CurrentPlaceID != nil && p.PlaceId == nil) || (u.CurrentPlaceID != nil && p.PlaceId != nil && *u.CurrentPlaceID != *p.PlaceId)
+
+			if u.CurrentPresence != statusStr || u.CurrentGameName != p.LastLocation || universeChanged || placeChanged {
 				oldPresence := u.CurrentPresence
 				oldGame := u.CurrentGameName
 
 				u.CurrentPresence = statusStr
 				u.CurrentGameName = p.LastLocation
+				if statusStr == "Offline" {
+					u.CurrentUniverseID = nil
+					u.CurrentPlaceID = nil
+				} else {
+					u.CurrentUniverseID = p.UniverseId
+					u.CurrentPlaceID = p.PlaceId
+				}
 				u.UpdatedAt = time.Now()
-				database.DB.Model(&u).Select("current_presence", "current_game_name", "updated_at").Updates(&u)
+				database.DB.Model(&u).Select("current_presence", "current_game_name", "current_universe_id", "current_place_id", "updated_at").Updates(&u)
 
 				var mapID *uint
 
@@ -306,14 +411,8 @@ func syncAllPresences() {
 					if p.UniverseId != nil && *p.UniverseId > 0 {
 						var existingMap models.RobloxMap
 						if err := database.DB.Where("universe_id = ?", p.UniverseId).First(&existingMap).Error; err == nil {
-							// Exists! Check if the name has changed or description/url_path are empty
+							// Exists! Check if description/url_path are empty or need update
 							hasChanges := false
-							if existingMap.Name != p.LastLocation {
-								oldName := existingMap.Name
-								existingMap.Name = p.LastLocation
-								hasChanges = true
-								LogCron("INFO", "[AutoMap] [Update] Updated map name for UniverseID %d: '%s' -> '%s'", *p.UniverseId, oldName, p.LastLocation)
-							}
 							if existingMap.Description == "" || existingMap.UrlPath == "" || existingMap.PlaceID == nil || *existingMap.PlaceID == 0 {
 								gName, gDesc, gRootPlaceID, err := services.GetUniverseDetails(*p.UniverseId)
 								if err == nil {
@@ -358,6 +457,7 @@ func syncAllPresences() {
 									}
 									if gName != "" {
 										p.LastLocation = gName
+										nameMap.Name = gName
 									}
 									nameMap.Description = gDesc
 									nameMap.UrlPath = urlPath
@@ -448,7 +548,38 @@ func syncAllPresences() {
 		}
 	}
 
+	// Reset presences of orphan friends who are no longer actively tracked by any registered user
+	cleanupOrphanPresences()
+
 	duration := time.Since(startTime)
 	LogCron("INFO", "[PresenceSync] Completed. Total processed: %d targets, Status changes detected: %d, Duration: %v",
 		len(usersToUpdate), changeCount, duration)
+	updateCronMetadata("presence_sync", instanceID, "idle", startTime, duration, map[string]interface{}{
+		"processed_count": len(usersToUpdate),
+		"change_count":    changeCount,
+	})
+}
+
+func cleanupOrphanPresences() {
+	tx := database.DB.Exec(`
+		UPDATE users 
+		SET current_presence = 'Offline', 
+			current_game_name = '-', 
+			current_universe_id = NULL, 
+			current_place_id = NULL,
+			updated_at = ?
+		WHERE role_id IS NULL 
+		  AND id NOT IN (
+			  SELECT DISTINCT friend_id 
+			  FROM friends 
+			  WHERE status = 'active'
+		  )
+		  AND (current_presence != 'Offline' OR current_game_name != '-')
+	`, time.Now())
+
+	if tx.Error != nil {
+		LogCron("ERROR", "[Cleanup] Gagal mereset status teman yatim: %v", tx.Error)
+	} else if tx.RowsAffected > 0 {
+		LogCron("INFO", "[Cleanup] Berhasil mereset status %d teman yatim yang sudah tidak aktif dilacak.", tx.RowsAffected)
+	}
 }

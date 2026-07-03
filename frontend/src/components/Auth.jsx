@@ -18,9 +18,7 @@ const Auth = ({ onLogin, showToast }) => {
     try {
       const response = await fetchWithAuth(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
 
@@ -45,55 +43,61 @@ const Auth = ({ onLogin, showToast }) => {
   };
 
   return (
-    <div className="app-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-      <div style={{ background: 'var(--bg-card)', padding: '2rem', borderRadius: '1rem', width: '100%', maxWidth: '400px', border: '1px solid var(--border)' }}>
-        <h2 style={{ textAlign: 'center', marginBottom: '1.5rem', fontSize: '1.5rem', background: 'linear-gradient(to right, #60a5fa, #a78bfa)', WebkitBackgroundClip: 'text', color: 'transparent' }}>
-          {isLogin ? 'Login Dashboard' : 'Register Akun'}
-        </h2>
-        
-        {error && <div style={{ color: '#ef4444', marginBottom: '1rem', textAlign: 'center', fontSize: '0.9rem' }}>{error}</div>}
+    <div className="auth-page">
+      <div className="auth-card">
+        {/* Logo */}
+        <div className="auth-logo">
+          <span className="auth-logo-icon">✨</span>
+          <div className="auth-title">Co-Play Capsule</div>
+          <div className="auth-subtitle">
+            {isLogin ? 'Selamat datang kembali! 💖' : 'Buat akun baru dan mulai petualangan! 🚀'}
+          </div>
+        </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {error && <div className="auth-error">{error}</div>}
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: error ? '1rem' : '0' }}>
           <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Username Roblox / App</label>
+            <label className="auth-label">Username</label>
             <input
               type="text"
+              className="auth-input"
+              placeholder="Username Roblox / App"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--bg-hover)', color: '#fff' }}
               required
+              autoFocus
             />
           </div>
-          
+
           <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Password</label>
+            <label className="auth-label">Password</label>
             <input
               type="password"
+              className="auth-input"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--bg-hover)', color: '#fff' }}
               required
             />
           </div>
 
           <button
             type="submit"
+            className="auth-btn"
             disabled={isLoading}
-            style={{ 
-              marginTop: '0.5rem', padding: '0.75rem', borderRadius: '0.5rem', 
-              background: '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer',
-              fontWeight: 'bold', transition: 'background 0.2s'
-            }}
           >
-            {isLoading ? 'Memproses...' : (isLogin ? 'Login' : 'Register')}
+            {isLoading
+              ? (isLogin ? '⏳ Masuk...' : '⏳ Mendaftar...')
+              : (isLogin ? '🚀 Masuk Sekarang' : '✨ Daftar Sekarang')}
           </button>
         </form>
 
-        <div style={{ marginTop: '1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-          {isLogin ? "Belum punya akun? " : "Sudah punya akun? "}
-          <span 
-            onClick={() => { setIsLogin(!isLogin); setError(''); }} 
-            style={{ color: '#60a5fa', cursor: 'pointer', textDecoration: 'underline' }}
+        <div className="auth-switch">
+          {isLogin ? 'Belum punya akun? ' : 'Sudah punya akun? '}
+          <span
+            className="auth-switch-link"
+            onClick={() => { setIsLogin(!isLogin); setError(''); }}
           >
             {isLogin ? 'Daftar sekarang' : 'Login di sini'}
           </span>

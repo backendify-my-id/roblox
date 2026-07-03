@@ -999,11 +999,17 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
 
   // Co-Players State
   const [activeView, setActiveView] = useState(() => {
+    const cached = localStorage.getItem('adminActiveView');
+    if (cached) return cached;
     if (hasViewUsers) return 'users';
     if (hasViewCoPlayers) return 'co-players';
     if (hasViewShadow) return 'shadow';
     return 'users';
   });
+
+  useEffect(() => {
+    localStorage.setItem('adminActiveView', activeView);
+  }, [activeView]);
   const [coPlayingGroups, setCoPlayingGroups] = useState([]);
   const [isLoadingCoPlayers, setIsLoadingCoPlayers] = useState(false);
   const [coPlaySearchMap, setCoPlaySearchMap] = useState('');
@@ -1283,8 +1289,8 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
   // Month-by-month Registration Growth
   const sortedRegs = stats?.growth_counts
     ? Object.entries(stats.growth_counts)
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .slice(-6)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-6)
     : [];
   const maxRegVal = Math.max(...sortedRegs.map(r => r[1]), 1);
 
@@ -1298,47 +1304,6 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
           <p className="admin-header-subtitle">
             Manajemen Pengguna & Database Sistem
           </p>
-        </div>
-        <div className="admin-header-actions">
-          {user.role === 'admin' && (
-            <>
-              <button
-                onClick={handleBackup}
-                style={{ background: '#10b981', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-              >
-                💾 Backup DB
-              </button>
-              <label
-                style={{
-                  background: '#3b82f6',
-                  color: '#fff',
-                  border: 'none',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '0.5rem',
-                  cursor: isRestoring ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  opacity: isRestoring ? 0.7 : 1
-                }}
-              >
-                📂 {isRestoring ? 'Memulihkan...' : 'Restore DB'}
-                <input
-                  type="file"
-                  accept=".sql"
-                  onChange={handleRestore}
-                  disabled={isRestoring}
-                  style={{ display: 'none' }}
-                />
-              </label>
-            </>
-          )}
-          <button
-            onClick={onBack}
-            style={{ background: 'var(--bg-card)', color: '#fff', border: '1px solid var(--border)', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer' }}
-          >
-            &larr; Kembali ke Dashboard
-          </button>
         </div>
       </div>
 
@@ -1450,6 +1415,60 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
             }}
           >
             🖥️ Log Cron Sistem
+          </button>
+        )}
+        {user.role === 'admin' && (
+          <button
+            onClick={() => setActiveView('cron-monitor')}
+            style={{
+              padding: '0.6rem 1.2rem',
+              borderRadius: '0.5rem',
+              border: activeView === 'cron-monitor' ? '1px solid #14b8a6' : '1px solid transparent',
+              background: activeView === 'cron-monitor' ? 'rgba(20,184,166,0.15)' : 'transparent',
+              color: activeView === 'cron-monitor' ? '#2dd4bf' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.95rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            ⚡ Cron Monitor & Rate Limit
+          </button>
+        )}
+        {user.role === 'admin' && (
+          <button
+            onClick={() => setActiveView('backup-restore')}
+            style={{
+              padding: '0.6rem 1.2rem',
+              borderRadius: '0.5rem',
+              border: activeView === 'backup-restore' ? '1px solid #10b981' : '1px solid transparent',
+              background: activeView === 'backup-restore' ? 'rgba(16,185,129,0.15)' : 'transparent',
+              color: activeView === 'backup-restore' ? '#34d399' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.95rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            💾 Backup & Restore
+          </button>
+        )}
+        {user.role === 'admin' && (
+          <button
+            onClick={() => setActiveView('maps')}
+            style={{
+              padding: '0.6rem 1.2rem',
+              borderRadius: '0.5rem',
+              border: activeView === 'maps' ? '1px solid #3b82f6' : '1px solid transparent',
+              background: activeView === 'maps' ? 'rgba(59,130,246,0.15)' : 'transparent',
+              color: activeView === 'maps' ? '#60a5fa' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.95rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            🗺️ Database Map
           </button>
         )}
       </div>
@@ -2515,6 +2534,17 @@ const AdminDashboard = ({ user, onBack, showToast }) => {
         <NetworkGraph3D showToast={showToast} />
       ) : activeView === 'logs' ? (
         <SystemLogViewer showToast={showToast} />
+      ) : activeView === 'cron-monitor' ? (
+        <CronJobMonitor showToast={showToast} />
+      ) : activeView === 'backup-restore' ? (
+        <DatabaseBackupRestore
+          showToast={showToast}
+          handleBackup={handleBackup}
+          handleRestore={handleRestore}
+          isRestoring={isRestoring}
+        />
+      ) : activeView === 'maps' ? (
+        <DatabaseMapsList showToast={showToast} />
       ) : null}
 
       {selectedUser && (
@@ -2730,6 +2760,1079 @@ const SystemLogViewer = ({ showToast }) => {
         >
           ⬇️ Scroll ke Bawah
         </button>
+      </div>
+    </div>
+  );
+};
+
+// ─── Cron Job Monitor Component ──────────────────────────────────────────────────
+const CronJobMonitor = ({ showToast }) => {
+  const [data, setData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+
+  const fetchStatus = async () => {
+    try {
+      const res = await fetchWithAuth('/api/admin/cron-status');
+      if (!res.ok) throw new Error('Gagal memuat status cron');
+      const json = await res.json();
+      setData(json);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStatus();
+  }, []);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(fetchStatus, 5000); // refresh every 5s
+    return () => clearInterval(interval);
+  }, [autoRefresh]);
+
+  if (isLoading && !data) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+        Memuat data pemantauan sistem...
+      </div>
+    );
+  }
+
+  const remainingHits = data?.remaining_hits ?? 80;
+  const maxHits = data?.max_hits ?? 80;
+  const percentage = Math.round((remainingHits / maxHits) * 100);
+
+  // Determine progress bar color based on remaining hits
+  let gaugeColor = '#10b981'; // Green (Safe)
+  if (percentage < 30) {
+    gaugeColor = '#ef4444'; // Red (Danger)
+  } else if (percentage < 60) {
+    gaugeColor = '#f59e0b'; // Amber (Busy)
+  }
+
+  const jobs = data?.jobs || [];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1rem' }}>
+      {/* Upper Grid: Rate Limit & Cluster Info */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+        {/* Roblox API Rate Limit Gauge Card */}
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Roblox API Rate Limit (Per IP)</span>
+            <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', color: 'var(--text-muted)' }}>Menit Berjalan</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <div style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '50%', background: `conic-gradient(${gaugeColor} ${percentage}%, rgba(255,255,255,0.05) ${percentage}%)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: '68px', height: '68px', borderRadius: '50%', background: '#0f172a', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#fff' }}>{remainingHits}</span>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Sisa Hits</span>
+              </div>
+            </div>
+
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#fff', marginBottom: '0.25rem' }}>
+                {percentage}% <span style={{ fontSize: '0.9rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>Tersedia</span>
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                Batas aman sistem: <strong>{maxHits} request / menit</strong>.
+              </div>
+              <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{ width: `${percentage}%`, height: '100%', background: gaugeColor, transition: 'width 0.5s ease-in-out' }} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Server Cluster Configuration Card */}
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Konfigurasi Cluster Server</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '0.75rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Instance ID Server Ini</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 'bold', color: '#3b82f6' }}>#{data?.instance_id ?? 1}</div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '0.75rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Total Server di Cluster</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 'bold', color: '#10b981' }}>{data?.total_instances ?? 1} Instance</div>
+            </div>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(59,130,246,0.05)', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(59,130,246,0.1)' }}>
+            ℹ️ Beban sinkronisasi dibagi menggunakan partisi database modulo ID (`id % total_instances`).
+          </div>
+        </div>
+      </div>
+
+      {/* Control Action Bar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)', padding: '0.75rem 1.25rem', borderRadius: '0.75rem', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <input
+            type="checkbox"
+            id="auto-refresh-cron"
+            checked={autoRefresh}
+            onChange={(e) => setAutoRefresh(e.target.checked)}
+            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+          />
+          <label htmlFor="auto-refresh-cron" style={{ fontSize: '0.85rem', color: '#fff', cursor: 'pointer', userSelect: 'none' }}>
+            🔄 Refresh Otomatis (Setiap 5 detik)
+          </label>
+        </div>
+        <button
+          onClick={fetchStatus}
+          style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '0.4rem 1rem', borderRadius: '0.35rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+        >
+          Ambil Data Terbaru
+        </button>
+      </div>
+
+      {/* Cron Jobs State Table */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '1rem', overflow: 'hidden' }}>
+        <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h4 style={{ margin: 0, color: '#fff' }}>Daftar Pekerjaan Latar Belakang (Cron Jobs)</h4>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+            <thead>
+              <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '1rem' }}>Pekerjaan (Job)</th>
+                <th style={{ padding: '1rem' }}>Instance Server</th>
+                <th style={{ padding: '1rem' }}>Status</th>
+                <th style={{ padding: '1rem' }}>Mulai Eksekusi</th>
+                <th style={{ padding: '1rem' }}>Selesai Terakhir</th>
+                <th style={{ padding: '1rem' }}>Durasi</th>
+                <th style={{ padding: '1rem' }}>Statistik</th>
+              </tr>
+            </thead>
+            <tbody>
+              {jobs.length === 0 ? (
+                <tr>
+                  <td colSpan="7" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    Belum ada metadata eksekusi cron di Redis. Tunggu cron berjalan otomatis.
+                  </td>
+                </tr>
+              ) : (
+                jobs.map((job, idx) => {
+                  const isRunning = job.status === 'running';
+                  return (
+                    <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)', background: isRunning ? 'rgba(20,184,166,0.03)' : 'transparent', transition: 'background 0.2s' }}>
+                      <td style={{ padding: '1rem', fontWeight: 'bold', color: '#fff' }}>
+                        {job.job_name === 'friends_sync' ? '👥 Friends & Profile Sync' : '🟢 Presence Sync'}
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        <span style={{ background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+                          Instance #{job.instance_id}
+                        </span>
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            background: isRunning ? '#14b8a6' : '#94a3b8',
+                            display: 'inline-block',
+                            boxShadow: isRunning ? '0 0 8px #14b8a6' : 'none'
+                          }} />
+                          <span style={{ fontWeight: 600, color: isRunning ? '#2dd4bf' : 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                            {isRunning ? 'Running' : 'Idle'}
+                          </span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>{job.start_time || '-'}</td>
+                      <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>{job.last_run || '-'}</td>
+                      <td style={{ padding: '1rem', color: '#fff' }}>
+                        {job.duration_ms > 0 ? `${(job.duration_ms / 1000).toFixed(2)} detik` : '-'}
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        {job.job_name === 'friends_sync' ? (
+                          <div style={{ fontSize: '0.8rem' }}>
+                            <span style={{ color: '#4ade80' }}>✓ {job.processed_count} Sukses</span> · <span style={{ color: '#f87171' }}>✗ {job.failed_count} Gagal</span>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '0.8rem' }}>
+                            <span style={{ color: '#a78bfa' }}>👥 {job.processed_count} Teman</span> · <span style={{ color: '#fbbf24' }}>⚡ {job.change_count} Perubahan</span>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Database Backup & Restore Component ──────────────────────────────────────────
+const DatabaseBackupRestore = ({ showToast, handleBackup, handleRestore, isRestoring }) => {
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [autoBackups, setAutoBackups] = useState([]);
+  const [isLoadingList, setIsLoadingList] = useState(true);
+  const [isTriggeringBackup, setIsTriggeringBackup] = useState(false);
+  const [isRestoringArchive, setIsRestoringArchive] = useState(null); // stores filename currently restoring
+
+  const fetchAutoBackups = async () => {
+    setIsLoadingList(true);
+    try {
+      const res = await fetchWithAuth('/api/admin/backups/list');
+      if (!res.ok) throw new Error('Gagal memuat arsip backup otomatis');
+      const data = await res.json();
+      setAutoBackups(Array.isArray(data) ? data : []);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsLoadingList(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAutoBackups();
+  }, []);
+
+  const onFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file && file.name.endsWith('.sql')) {
+      setSelectedFile(file);
+    } else {
+      showToast('Hanya mendukung format file SQL (.sql)', 'error');
+      setSelectedFile(null);
+    }
+  };
+
+  const triggerRestore = () => {
+    if (!selectedFile) return;
+    const fakeEvent = {
+      target: {
+        files: [selectedFile],
+        value: ''
+      }
+    };
+    handleRestore(fakeEvent);
+  };
+
+  const handleTriggerAutoBackup = async () => {
+    setIsTriggeringBackup(true);
+    showToast('Sedang membuat backup otomatis baru...', 'info');
+    try {
+      const res = await fetchWithAuth('/api/admin/backups/trigger-auto', {
+        method: 'POST'
+      });
+      if (!res.ok) throw new Error('Gagal memicu backup otomatis');
+      const data = await res.json();
+      showToast(data.message || 'Backup otomatis berhasil dibuat', 'success');
+      fetchAutoBackups(); // Refresh list
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsTriggeringBackup(false);
+    }
+  };
+
+  const handleDownloadFile = async (filename) => {
+    try {
+      const res = await fetchWithAuth(`/api/admin/backups/download/${filename}`);
+      if (!res.ok) throw new Error('Gagal mengunduh file backup');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleDeleteFile = async (filename) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus file backup "${filename}"?`)) return;
+    try {
+      const res = await fetchWithAuth(`/api/admin/backups/delete/${filename}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Gagal menghapus file backup');
+      showToast('File backup berhasil dihapus', 'success');
+      fetchAutoBackups(); // Refresh list
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleRestoreFromArchive = async (filename) => {
+    const confirmRestore = window.confirm(
+      `PERINGATAN KRITIS:\nMemulihkan database dari arsip "${filename}" akan menghapus seluruh data aktif saat ini.\n\nApakah Anda yakin ingin melanjutkan?`
+    );
+    if (!confirmRestore) return;
+
+    setIsRestoringArchive(filename);
+    showToast('Sedang memulihkan basis data dari arsip, mohon tunggu...', 'info');
+    try {
+      const res = await fetchWithAuth(`/api/admin/backups/restore/${filename}`, {
+        method: 'POST'
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Gagal memulihkan database');
+      }
+      showToast('Database berhasil dipulihkan!', 'success');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (err) {
+      showToast(err.message, 'error');
+      setIsRestoringArchive(null);
+    }
+  };
+
+  const formatBytes = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1rem' }}>
+      {/* Description Intro Card */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '1rem' }}>
+        <h3 style={{ margin: '0 0 0.5rem 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          💾 Manajemen Ekspor & Impor Database
+        </h3>
+        <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: '1.5' }}>
+          Gunakan modul ini untuk mencadangkan data pelacakan Anda secara manual atau memulihkan database dari cadangan yang disimpan sebelumnya. Fitur ini mengekspor file SQL skema lengkap termasuk data akun, teman, riwayat aktivitas, dan log audit sistem.
+        </p>
+      </div>
+
+      {/* Main Grid: Backup Card vs Restore Card */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
+        {/* Backup Card */}
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1.5rem' }}>
+          <div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#fff', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              📥 Pencadangan (Backup)
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+              Membuat salinan basis data instan. File SQL yang diunduh dapat disimpan dengan aman sebagai arsip lokal.
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '0.75rem', marginTop: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                <span>Format Output:</span>
+                <strong style={{ color: '#10b981' }}>SQL (.sql)</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                <span>Kompresi:</span>
+                <strong>Tidak ada (Teks SQL)</strong>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleBackup}
+            style={{
+              width: '100%',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              color: '#fff',
+              border: 'none',
+              padding: '0.75rem',
+              borderRadius: '0.5rem',
+              fontWeight: 600,
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              boxShadow: '0 4px 10px rgba(16,185,129,0.2)',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem'
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'none'}
+          >
+            📥 Unduh Backup Database (.sql)
+          </button>
+        </div>
+
+        {/* Restore Card */}
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1.5rem', borderRadius: '1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#fff', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              📤 Pemulihan (Restore)
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+              Memulihkan basis data dari cadangan file SQL. Proses ini akan menimpa seluruh data yang ada saat ini.
+            </div>
+
+            {/* Warning Banner */}
+            <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5', padding: '0.75rem 1rem', borderRadius: '0.5rem', fontSize: '0.8rem', marginTop: '1rem', lineHeight: '1.4' }}>
+              ⚠️ <strong>PERINGATAN KRITIS:</strong> Seluruh data aktif di sistem (termasuk riwayat login, pelacakan teman, dan log aktivitas) akan dihapus total dan digantikan oleh isi file SQL backup.
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* Drag & Drop File Picker */}
+            <div style={{ position: 'relative', border: '2px dashed rgba(255,255,255,0.15)', padding: '1.5rem', borderRadius: '0.75rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', cursor: 'pointer', transition: 'all 0.2s' }}>
+              <input
+                type="file"
+                accept=".sql"
+                onChange={onFileChange}
+                disabled={isRestoring || isRestoringArchive}
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '1.5rem', display: 'block', marginBottom: '0.5rem' }}>📁</span>
+              <span style={{ fontSize: '0.8rem', color: selectedFile ? '#60a5fa' : 'var(--text-muted)', fontWeight: selectedFile ? 600 : 'normal' }}>
+                {selectedFile ? `File Terpilih: ${selectedFile.name}` : 'Klik untuk memilih file backup SQL'}
+              </span>
+            </div>
+
+            {selectedFile && (
+              <button
+                onClick={triggerRestore}
+                disabled={isRestoring || isRestoringArchive}
+                style={{
+                  width: '100%',
+                  background: (isRestoring || isRestoringArchive) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '0.75rem',
+                  borderRadius: '0.5rem',
+                  fontWeight: 600,
+                  fontSize: '0.9rem',
+                  cursor: (isRestoring || isRestoringArchive) ? 'not-allowed' : 'pointer',
+                  boxShadow: (isRestoring || isRestoringArchive) ? 'none' : '0 4px 10px rgba(239,68,68,0.2)',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem'
+                }}
+              >
+                {isRestoring ? '⏳ Memulihkan Database...' : '🚀 Mulai Pemulihan (Mereset Data)'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Auto Backup Archive List Card */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '1rem', overflow: 'hidden', marginTop: '1rem' }}>
+        <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h4 style={{ margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              📦 Arsip Backup Otomatis & Terjadwal
+            </h4>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              File tersimpan secara lokal di folder <code>uploads/db/</code>. Cadangan otomatis dibuat setiap hari pukul 00:00.
+            </span>
+          </div>
+
+          <button
+            onClick={handleTriggerAutoBackup}
+            disabled={isTriggeringBackup || isRestoring || isRestoringArchive}
+            style={{
+              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+              color: '#fff',
+              border: 'none',
+              padding: '0.5rem 1rem',
+              borderRadius: '0.5rem',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              cursor: (isTriggeringBackup || isRestoring || isRestoringArchive) ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            {isTriggeringBackup ? '⏳ Membuat Backup...' : '⚡ Trigger Backup Otomatis Sekarang'}
+          </button>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+            <thead>
+              <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '1rem' }}>Nama File</th>
+                <th style={{ padding: '1rem' }}>Waktu Pencadangan</th>
+                <th style={{ padding: '1rem' }}>Ukuran File</th>
+                <th style={{ padding: '1rem', textAlign: 'right' }}>Aksi / Operasi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoadingList ? (
+                <tr>
+                  <td colSpan="4" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    Memuat daftar arsip backup...
+                  </td>
+                </tr>
+              ) : autoBackups.length === 0 ? (
+                <tr>
+                  <td colSpan="4" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    Belum ada arsip backup otomatis di folder <code>uploads/db</code>.
+                  </td>
+                </tr>
+              ) : (
+                autoBackups.map((backup, idx) => {
+                  const isThisRestoring = isRestoringArchive === backup.filename;
+                  return (
+                    <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.01)'} onMouseLeave={e => e.currentTarget.style.background = ''}>
+                      <td style={{ padding: '1rem', color: '#fff', fontWeight: 600 }}>
+                        📄 {backup.filename}
+                      </td>
+                      <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>
+                        {new Date(backup.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'medium' })}
+                      </td>
+                      <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>
+                        {formatBytes(backup.size)}
+                      </td>
+                      <td style={{ padding: '1rem', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => handleDownloadFile(backup.filename)}
+                            disabled={isRestoring || isRestoringArchive}
+                            style={{
+                              background: 'rgba(59,130,246,0.15)',
+                              color: '#60a5fa',
+                              border: '1px solid rgba(59,130,246,0.3)',
+                              padding: '0.3rem 0.75rem',
+                              borderRadius: '0.35rem',
+                              cursor: (isRestoring || isRestoringArchive) ? 'not-allowed' : 'pointer',
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            📥 Download
+                          </button>
+
+                          <button
+                            onClick={() => handleRestoreFromArchive(backup.filename)}
+                            disabled={isRestoring || isRestoringArchive}
+                            style={{
+                              background: 'rgba(239,68,68,0.15)',
+                              color: '#f87171',
+                              border: '1px solid rgba(239,68,68,0.3)',
+                              padding: '0.3rem 0.75rem',
+                              borderRadius: '0.35rem',
+                              cursor: (isRestoring || isRestoringArchive) ? 'not-allowed' : 'pointer',
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            {isThisRestoring ? '⏳ Memulihkan...' : '🚀 Restore'}
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteFile(backup.filename)}
+                            disabled={isRestoring || isRestoringArchive}
+                            style={{
+                              background: 'rgba(255,255,255,0.05)',
+                              color: '#94a3b8',
+                              border: '1px solid rgba(255,255,255,0.1)',
+                              padding: '0.3rem 0.75rem',
+                              borderRadius: '0.35rem',
+                              cursor: (isRestoring || isRestoringArchive) ? 'not-allowed' : 'pointer',
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            🗑️ Hapus
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Database Maps List Component ───────────────────────────────────────────────
+const DatabaseMapsList = ({ showToast }) => {
+  const [maps, setMaps] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Pagination states
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const mapLoaderRef = useRef(null);
+
+  // Roblox Online Search states
+  const [robloxQuery, setRobloxQuery] = useState('');
+  const [robloxResults, setRobloxResults] = useState([]);
+  const [isSearchingRoblox, setIsSearchingRoblox] = useState(false);
+
+  // Manual Add state
+  const [manualName, setManualName] = useState('');
+  const [isAddingMap, setIsAddingMap] = useState(false);
+
+  // Sync Names state & function
+  const [isSyncingNames, setIsSyncingNames] = useState(false);
+  const handleSyncMapNames = async () => {
+    if (!window.confirm('Apakah Anda yakin ingin menyinkronkan seluruh nama map di database ke nama bahasa Inggris resmi? Tindakan ini akan memakan waktu beberapa detik karena memanggil Roblox API secara batch.')) {
+      return;
+    }
+    setIsSyncingNames(true);
+    try {
+      const res = await fetchWithAuth('/api/maps/sync-names', {
+        method: 'POST'
+      });
+      if (!res.ok) throw new Error('Gagal menyinkronkan nama map');
+      const data = await res.json();
+      showToast(`Berhasil menyinkronkan nama map! Diproses: ${data.total_processed}, Diperbarui: ${data.total_updated} ⚡`, 'success');
+      setPage(1);
+      fetchMaps(1, true);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsSyncingNames(false);
+    }
+  };
+
+  const fetchMaps = async (currentPage = 1, isSearchChange = false) => {
+    if (currentPage === 1) {
+      setIsLoading(true);
+    } else {
+      setIsFetchingMore(true);
+    }
+    try {
+      const limit = 20;
+      const res = await fetchWithAuth(`/api/maps?search=${encodeURIComponent(searchQuery)}&page=${currentPage}&limit=${limit}`);
+      if (!res.ok) throw new Error('Gagal memuat data map dari database');
+      const data = await res.json();
+
+      const fetchedData = Array.isArray(data.data) ? data.data : [];
+      setMaps(prev => (currentPage === 1 || isSearchChange) ? fetchedData : [...prev, ...fetchedData]);
+      setTotalPages(data.total_pages || 1);
+      setTotalItems(data.total_items || 0);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsLoading(false);
+      setIsFetchingMore(false);
+    }
+  };
+
+  // Reset pagination when search query changes
+  useEffect(() => {
+    setPage(1);
+    fetchMaps(1, true);
+  }, [searchQuery]);
+
+  // Fetch when page changes (only if page > 1 to avoid double fetching on mount)
+  useEffect(() => {
+    if (page > 1) {
+      fetchMaps(page, false);
+    }
+  }, [page]);
+
+  // Setup Intersection Observer for auto scroll pagination
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first.isIntersecting) {
+          if (page < totalPages && !isLoading && !isFetchingMore) {
+            setPage(prev => prev + 1);
+          }
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentLoader = mapLoaderRef.current;
+    if (currentLoader) {
+      observer.observe(currentLoader);
+    }
+
+    return () => {
+      if (currentLoader) {
+        observer.unobserve(currentLoader);
+      }
+    };
+  }, [page, totalPages, isLoading, isFetchingMore]);
+
+  const handleDeleteMap = async (id, name) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus map "${name}" dari database? Tindakan ini akan mengembalikan status pemetaan Co-Player ke string mentah.`)) {
+      return;
+    }
+    try {
+      const res = await fetchWithAuth(`/api/maps/${id}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Gagal menghapus map');
+      showToast('Map berhasil dihapus dari database! 🗑️', 'success');
+      // Refresh current page list
+      setPage(1);
+      fetchMaps(1, true);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleAddMapManual = async (e) => {
+    e.preventDefault();
+    if (!manualName.trim()) return;
+    setIsAddingMap(true);
+    try {
+      const res = await fetchWithAuth('/api/maps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: manualName.trim() })
+      });
+      if (!res.ok) throw new Error('Gagal menambahkan map');
+      showToast('Map berhasil ditambahkan ke database! 🗺️', 'success');
+      setManualName('');
+      setPage(1);
+      fetchMaps(1, true);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsAddingMap(false);
+    }
+  };
+
+  const handleSearchRoblox = async (e) => {
+    e.preventDefault();
+    if (!robloxQuery.trim()) return;
+    setIsSearchingRoblox(true);
+    try {
+      const res = await fetchWithAuth(`/api/maps/search-roblox?query=${encodeURIComponent(robloxQuery.trim())}`);
+      if (!res.ok) throw new Error('Gagal mencari game di Roblox');
+      const data = await res.json();
+      setRobloxResults(Array.isArray(data) ? data : []);
+      if (data.length === 0) {
+        showToast('Tidak ada game ditemukan di Roblox untuk kata kunci tersebut.', 'info');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsSearchingRoblox(false);
+    }
+  };
+
+  const handleAddRobloxGame = async (gameName) => {
+    try {
+      const res = await fetchWithAuth('/api/maps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: gameName })
+      });
+      if (!res.ok) throw new Error('Gagal menambahkan game Roblox');
+      showToast(`Game "${gameName}" berhasil didaftarkan ke database! 🎮`, 'success');
+      setPage(1);
+      fetchMaps(1, true);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.3s ease-out' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h2 style={{ margin: 0, color: '#fff', fontSize: '1.6rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            🗺️ Database Map Roblox Terdaftar
+          </h2>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            Daftar map/game Roblox yang tersimpan di sistem untuk memetakan Co-Player dan mengumpulkan detail aktivitas.
+          </span>
+        </div>
+        <button
+          onClick={handleSyncMapNames}
+          disabled={isSyncingNames}
+          style={{
+            background: isSyncingNames ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+            color: isSyncingNames ? 'var(--text-muted)' : '#fff',
+            border: 'none',
+            padding: '0.6rem 1.2rem',
+            borderRadius: '0.5rem',
+            fontWeight: 'bold',
+            fontSize: '0.85rem',
+            cursor: isSyncingNames ? 'not-allowed' : 'pointer',
+            transition: 'all 0.2s',
+            boxShadow: isSyncingNames ? 'none' : '0 4px 10px rgba(59,130,246,0.2)'
+          }}
+        >
+          {isSyncingNames ? '⏳ Mensinkronisasi...' : '⚡ Sync Nama Map ke Global (Inggris)'}
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '1.5rem', alignItems: 'start' }}>
+        {/* Left Side: DB Maps Table */}
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '1rem', overflow: 'hidden' }}>
+          <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="search-container" style={{ maxWidth: '350px', width: '100%' }}>
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                placeholder="Cari map terdaftar di DB..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem 2.5rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid var(--border)',
+                  background: 'rgba(0,0,0,0.2)',
+                  color: '#fff',
+                  fontSize: '0.9rem'
+                }}
+              />
+            </div>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Total Map Terdaftar: <strong>{totalItems}</strong>
+            </span>
+          </div>
+
+          <div style={{ overflowX: 'auto', maxHeight: '550px', overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+              <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
+                <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>ID</th>
+                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Nama Map</th>
+                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Universe ID</th>
+                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Place ID / Redirect</th>
+                  <th style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading && page === 1 ? (
+                  <tr>
+                    <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      Memuat database map...
+                    </td>
+                  </tr>
+                ) : maps.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      Tidak ada map ditemukan di database.
+                    </td>
+                  </tr>
+                ) : (
+                  <>
+                    {maps.map((m) => (
+                      <tr key={m.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.01)'} onMouseLeave={e => e.currentTarget.style.background = ''}>
+                        <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>#{m.id}</td>
+                        <td style={{ padding: '1rem', color: '#fff', fontWeight: 600 }}>
+                          📍 {m.name}
+                        </td>
+                        <td style={{ padding: '1rem' }}>
+                          {m.universe_id ? (
+                            <span style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.8rem', border: '1px solid rgba(59,130,246,0.2)' }}>
+                              {m.universe_id}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Belum Ditautkan</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '1rem' }}>
+                          {m.place_id ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.8rem', border: '1px solid rgba(16,185,129,0.2)' }}>
+                                {m.place_id}
+                              </span>
+                              <a href={`https://www.roblox.com/games/${m.place_id}`} target="_blank" rel="noopener noreferrer" style={{ color: '#fbbf24', textDecoration: 'none', fontSize: '0.8rem' }} title="Buka Game Resmi di Roblox">
+                                🔗 Buka Game
+                              </a>
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Belum Ditautkan</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '1rem', textAlign: 'right' }}>
+                          <button
+                            onClick={() => handleDeleteMap(m.id, m.name)}
+                            style={{
+                              background: 'rgba(239,68,68,0.15)',
+                              color: '#f87171',
+                              border: '1px solid rgba(239,68,68,0.3)',
+                              padding: '0.25rem 0.6rem',
+                              borderRadius: '0.35rem',
+                              cursor: 'pointer',
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            🗑️ Hapus
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {page < totalPages && (
+                      <tr ref={mapLoaderRef}>
+                        <td colSpan="5" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)' }}>
+                          {isFetchingMore ? '⏳ Memuat lebih banyak map...' : '📜 Gulir ke bawah untuk memuat lebih banyak'}
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Right Side: Add Forms */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Add Manual Card */}
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '1rem', padding: '1.25rem' }}>
+            <h4 style={{ margin: '0 0 1rem 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              ➕ Tambah Map Manual
+            </h4>
+            <form onSubmit={handleAddMapManual} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <input
+                type="text"
+                placeholder="Nama Map (contoh: Cidro Janji)"
+                value={manualName}
+                onChange={e => setManualName(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid var(--border)',
+                  background: 'rgba(0,0,0,0.2)',
+                  color: '#fff',
+                  fontSize: '0.9rem',
+                  outline: 'none'
+                }}
+              />
+              <button
+                type="submit"
+                disabled={isAddingMap || !manualName.trim()}
+                style={{
+                  width: '100%',
+                  background: manualName.trim() ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'rgba(255,255,255,0.05)',
+                  color: manualName.trim() ? '#fff' : 'var(--text-muted)',
+                  border: 'none',
+                  padding: '0.6rem',
+                  borderRadius: '0.5rem',
+                  fontWeight: 'bold',
+                  fontSize: '0.85rem',
+                  cursor: manualName.trim() ? 'pointer' : 'not-allowed',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {isAddingMap ? 'Menambahkan...' : 'Daftarkan Map'}
+              </button>
+            </form>
+          </div>
+
+          {/* Search Roblox Online Card */}
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '1rem', padding: '1.25rem' }}>
+            <h4 style={{ margin: '0 0 0.25rem 0', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              🔍 Cari Game di Roblox
+            </h4>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '1rem' }}>
+              Cari game resmi secara online lewat Roblox API dan langsung tambahkan ke database lokal.
+            </span>
+            <form onSubmit={handleSearchRoblox} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+              <input
+                type="text"
+                placeholder="Cari game Roblox..."
+                value={robloxQuery}
+                onChange={e => setRobloxQuery(e.target.value)}
+                style={{
+                  flex: 1,
+                  padding: '0.5rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid var(--border)',
+                  background: 'rgba(0,0,0,0.2)',
+                  color: '#fff',
+                  fontSize: '0.85rem',
+                  outline: 'none'
+                }}
+              />
+              <button
+                type="submit"
+                disabled={isSearchingRoblox || !robloxQuery.trim()}
+                style={{
+                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '0.5rem 0.85rem',
+                  borderRadius: '0.5rem',
+                  fontWeight: 'bold',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {isSearchingRoblox ? '⏳' : 'Cari'}
+              </button>
+            </form>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '200px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+              {robloxResults.length > 0 ? (
+                robloxResults.map((r, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: 'rgba(255,255,255,0.03)',
+                      padding: '0.5rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid rgba(255,255,255,0.02)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, marginRight: '0.5rem', overflow: 'hidden' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }} title={r.name}>
+                        {r.name}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                        Creator: {r.creatorName || 'Unknown'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleAddRobloxGame(r.name)}
+                      style={{
+                        background: 'rgba(16,185,129,0.15)',
+                        color: '#34d399',
+                        border: '1px solid rgba(16,185,129,0.3)',
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '0.35rem',
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      ➕
+                    </button>
+                  </div>
+                ))
+              ) : robloxQuery.trim() && !isSearchingRoblox ? (
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '1rem 0' }}>
+                  Tidak ada hasil pencarian online.
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

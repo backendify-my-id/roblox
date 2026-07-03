@@ -17,6 +17,8 @@ type User struct {
 	// --- DIPINDAHKAN DARI TABEL FRIEND LAMA ---
 	CurrentPresence   string    `gorm:"type:varchar(50);default:'Offline'" json:"current_presence"`
 	CurrentGameName   string    `gorm:"type:varchar(255)" json:"current_game_name"`
+	CurrentUniverseID *uint64   `gorm:"type:bigint" json:"current_universe_id,omitempty"`
+	CurrentPlaceID    *uint64   `gorm:"type:bigint" json:"current_place_id,omitempty"`
 	// ------------------------------------------
 
 	CreatedAt         time.Time `json:"created_at"`

@@ -40,20 +40,9 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 		}
 	}
 
-	var nameFetchIDs []uint64
-	for _, rf := range robloxFriends {
-		fIDStr := fmt.Sprintf("%d", rf.Id)
-		ef, exists := efMap[fIDStr]
-		if !exists || ef.Status == "removed" {
-			nameFetchIDs = append(nameFetchIDs, rf.Id)
-		} else if checkNames {
-			nameFetchIDs = append(nameFetchIDs, rf.Id)
-		}
-	}
-
 	names := make(map[uint64]UserDetailData)
-	if len(nameFetchIDs) > 0 {
-		fetchedNames, err := GetUserDetails(nameFetchIDs)
+	if len(friendRobloxIDs) > 0 {
+		fetchedNames, err := GetUserDetails(friendRobloxIDs)
 		if err == nil {
 			names = fetchedNames
 		}

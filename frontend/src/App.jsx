@@ -13,10 +13,9 @@ import GameEntryDetailPage from './components/GameEntryDetailPage';
 import PublicGameListPage from './components/PublicGameListPage';
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
-function Dashboard({ user, showToast }) {
+function Dashboard({ user, showToast, onSync, isSyncing, onOpenProfile, onOpenSettings }) {
   const [friends, setFriends] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState(null);
   const [presenceFilter, setPresenceFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -33,8 +32,6 @@ function Dashboard({ user, showToast }) {
 
   const [selectedFriendLog, setSelectedFriendLog] = useState(null);
   const [selectedProfileLog, setSelectedProfileLog] = useState(null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isMyProfileOpen, setIsMyProfileOpen] = useState(false);
 
   const fetchFriends = useCallback(async () => {
     setIsLoading(true);
@@ -127,23 +124,7 @@ function Dashboard({ user, showToast }) {
     };
   }, []);
 
-  const handleManualSync = async () => {
-    setIsSyncing(true);
-    setError(null);
-    try {
-      const res = await fetchWithAuth('/api/friends/sync', { method: 'POST' });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Gagal sinkronisasi');
-      }
-      showToast('Sinkronisasi data berhasil!');
-      await fetchFriends();
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+  const handleManualSync = onSync;
   const handleSaveNote = async (friendId, newNote) => {
     try {
       const res = await fetchWithAuth(`/api/friends/${friendId}/note`, {
@@ -173,43 +154,16 @@ function Dashboard({ user, showToast }) {
           <p className="header-desc">
             Kapsul waktu kenangan & bucket list petualangan Roblox bersama orang-orang tersayang! 🚀
           </p>
-        </div>
-        <div className="header-user-card">
-          {user.avatar ? (
-            <img src={user.avatar} alt="Avatar" style={{ width: 48, height: 48, borderRadius: '50%', border: '2px solid #3b82f6' }} />
-          ) : (
-            <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</div>
-          )}
-          <div className="user-details">
-            <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#fff' }}>{user.displayName}</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>@{user.username}</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>ID: {user.roblox_id}</div>
-            
-            <div className="user-actions">
-              <button
-                onClick={handleManualSync}
-                disabled={isSyncing}
-                style={{ background: isSyncing ? '#334155' : '#3b82f6', color: '#fff', border: 'none', padding: '0.3rem 0.8rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: isSyncing ? 'not-allowed' : 'pointer' }}
-              >
-                {isSyncing ? 'Menyinkronkan...' : '🔄 Sync Sekarang'}
-              </button>
-              
-              <button
-                onClick={() => setIsMyProfileOpen(true)}
-                style={{ background: '#10b981', color: '#fff', border: 'none', padding: '0.3rem 0.8rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: 'pointer' }}
-              >
-                📋 Riwayat Saya
-              </button>
-
-              {user && (
-                <button
-                  onClick={() => setIsSettingsOpen(true)}
-                  style={{ background: 'transparent', color: '#94a3b8', border: '1px solid #334155', padding: '0.3rem 0.8rem', borderRadius: '0.3rem', fontSize: '0.8rem', cursor: 'pointer' }}
-                >
-                  ⚙️ Pengaturan
-                </button>
-              )}
-            </div>
+          <div className="dashboard-stats">
+            <span className="stat-chip stat-chip-online">
+              🟢 {friends.filter(f => f.current_presence === 'Online').length} Online
+            </span>
+            <span className="stat-chip stat-chip-ingame">
+              🎮 {friends.filter(f => f.current_presence === 'In-Game').length} In-Game
+            </span>
+            <span className="stat-chip stat-chip-total">
+              👥 {friends.length} Teman
+            </span>
           </div>
         </div>
       </div>
@@ -346,12 +300,6 @@ function Dashboard({ user, showToast }) {
       {selectedProfileLog && (
         <ProfileChangeModal friend={selectedProfileLog} onClose={() => setSelectedProfileLog(null)} />
       )}
-      {isSettingsOpen && (
-        <SettingsModal user={user} onClose={() => setIsSettingsOpen(false)} showToast={showToast} />
-      )}
-      {isMyProfileOpen && (
-        <MyProfileModal user={user} onClose={() => setIsMyProfileOpen(false)} />
-      )}
     </div>
   );
 }
@@ -363,9 +311,23 @@ function App() {
     try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
   });
   const [toast, setToast] = useState(null);
-  const [currentView, setCurrentView] = useState('gameLists');
-  const [activeListId, setActiveListId] = useState(null);
-  const [activeEntryId, setActiveEntryId] = useState(null);
+  const [currentView, setCurrentView] = useState(() => {
+    return localStorage.getItem('currentView') || 'dashboard';
+  });
+  const [activeListId, setActiveListId] = useState(() => {
+    const val = localStorage.getItem('activeListId');
+    return val ? parseInt(val, 10) : null;
+  });
+  const [activeEntryId, setActiveEntryId] = useState(() => {
+    const val = localStorage.getItem('activeEntryId');
+    return val ? parseInt(val, 10) : null;
+  });
+
+  // User dropdown & modal state (lifted from Dashboard)
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isMyProfileOpen, setIsMyProfileOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Parse path for public view-only sharing link
   const [publicShareToken, setPublicShareToken] = useState(() => {
@@ -377,6 +339,17 @@ function App() {
   });
 
   const navigateTo = (view, listId = null, entryId = null) => {
+    localStorage.setItem('currentView', view);
+    if (listId !== null) {
+      localStorage.setItem('activeListId', listId);
+    } else {
+      localStorage.removeItem('activeListId');
+    }
+    if (entryId !== null) {
+      localStorage.setItem('activeEntryId', entryId);
+    } else {
+      localStorage.removeItem('activeEntryId');
+    }
     setCurrentView(view);
     setActiveListId(listId);
     setActiveEntryId(entryId);
@@ -387,18 +360,12 @@ function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Efek welcome saat user baru saja login
-  useEffect(() => {
-    if (user && token) {
-      showToastMsg(`Selamat datang kembali, ${user.displayName}!`);
-    }
-  }, [user?.id]);
-
   const handleLogin = (newToken, newUser) => {
     localStorage.setItem('token', newToken);
     localStorage.setItem('user', JSON.stringify(newUser));
     setToken(newToken);
     setUser(newUser);
+    showToastMsg(`Selamat datang kembali, ${newUser.displayName}!`);
   };
 
   const handleLogout = async () => {
@@ -409,10 +376,32 @@ function App() {
     }
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('currentView');
+    localStorage.removeItem('activeListId');
+    localStorage.removeItem('activeEntryId');
+    localStorage.removeItem('adminActiveView');
     setToken(null);
     setUser(null);
-    navigateTo('gameLists');
+    setIsUserMenuOpen(false);
+    navigateTo('dashboard');
     showToastMsg('Anda telah berhasil keluar.', 'success');
+  };
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    setIsUserMenuOpen(false);
+    try {
+      const res = await fetchWithAuth('/api/friends/sync', { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Gagal sinkronisasi');
+      }
+      showToastMsg('Sinkronisasi data berhasil!');
+    } catch (err) {
+      showToastMsg(err.message, 'error');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const hasAdminPanelAccess = user && (user.role === 'admin' || (user.permissions && (
@@ -440,8 +429,8 @@ function App() {
         />
         {toast && (
           <div className={`toast toast-${toast.type}`}>
-            <span>{toast.type === 'success' ? '✅' : '❌'}</span>
-            <span>{toast.message}</span>
+            <span className="toast-icon">{toast.type === 'success' ? '✅' : '❌'}</span>
+            <span className="toast-message">{toast.message}</span>
           </div>
         )}
       </>
@@ -454,8 +443,8 @@ function App() {
         <Auth onLogin={handleLogin} showToast={showToastMsg} />
         {toast && (
           <div className={`toast toast-${toast.type}`}>
-            <span>{toast.type === 'success' ? '✅' : '❌'}</span>
-            <span>{toast.message}</span>
+            <span className="toast-icon">{toast.type === 'success' ? '✅' : '❌'}</span>
+            <span className="toast-message">{toast.message}</span>
           </div>
         )}
       </>
@@ -465,71 +454,118 @@ function App() {
   return (
     <>
       <nav className="navbar">
-        <div className="nav-logo" onClick={() => navigateTo('gameLists')}>
+        <div className="nav-logo" onClick={() => navigateTo('dashboard')}>
           <span className="logo-emoji">✨</span>
-          <span className="logo-text">
-            Co-Play Capsule
-          </span>
+          <span className="logo-text">Co-Play Capsule</span>
         </div>
         
         <div className="nav-actions">
           <button
             onClick={() => navigateTo('gameLists')}
-            style={{
-              padding: '0.5rem 1rem', borderRadius: '0.75rem', border: 'none',
-              background: currentView === 'gameLists' || currentView === 'listDetail' || currentView === 'entryDetail' ? 'linear-gradient(135deg, #ec4899, #8b5cf6)' : 'transparent',
-              color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem',
-              boxShadow: currentView === 'gameLists' || currentView === 'listDetail' || currentView === 'entryDetail' ? '0 4px 10px rgba(236,72,153,0.2)' : 'none',
-              transition: 'all 0.2s'
-            }}
+            className={`nav-btn${(currentView === 'gameLists' || currentView === 'listDetail' || currentView === 'entryDetail') ? ' active' : ''}`}
           >
-            🎮 Game Lists
+            📖 Bucket List
           </button>
           <button
             onClick={() => navigateTo('dashboard')}
-            style={{
-              padding: '0.5rem 1rem', borderRadius: '0.75rem', border: 'none',
-              background: currentView === 'dashboard' ? 'linear-gradient(135deg, #ec4899, #8b5cf6)' : 'transparent',
-              color: currentView === 'dashboard' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem',
-              boxShadow: currentView === 'dashboard' ? '0 4px 10px rgba(236,72,153,0.2)' : 'none',
-              transition: 'all 0.2s'
-            }}
-            onMouseOver={e => { if (currentView !== 'dashboard') e.currentTarget.style.color = '#fff'; }}
-            onMouseOut={e => { if (currentView !== 'dashboard') e.currentTarget.style.color = 'var(--text-muted)'; }}
+            className={`nav-btn${currentView === 'dashboard' ? ' active' : ''}`}
           >
-            📡 Live Status
+            💫 Live Tracker
           </button>
           {hasAdminPanelAccess && (
             <button
               onClick={() => navigateTo('admin')}
-              style={{
-                padding: '0.5rem 1rem', borderRadius: '0.75rem', border: 'none',
-                background: currentView === 'admin' ? '#3b82f6' : 'transparent',
-                color: currentView === 'admin' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem',
-                transition: 'all 0.2s'
-              }}
-              onMouseOver={e => { if (currentView !== 'admin') e.currentTarget.style.color = '#fff'; }}
-              onMouseOut={e => { if (currentView !== 'admin') e.currentTarget.style.color = 'var(--text-muted)'; }}
+              className={`nav-btn${currentView === 'admin' ? ' active' : ''}`}
             >
-              🔑 Admin
+              🔐 Admin
             </button>
           )}
-          <button
-            onClick={handleLogout}
-            style={{
-              padding: '0.5rem 1rem', borderRadius: '0.75rem', border: '1px solid rgba(239, 68, 68, 0.4)',
-              background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', cursor: 'pointer', fontWeight: 700, fontSize: '0.88rem',
-              transition: 'all 0.2s', marginLeft: '0.5rem'
-            }}
-            onMouseOver={e => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'; }}
-            onMouseOut={e => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; }}
-          >
-            🚪 Keluar
-          </button>
+
+          {/* User chip with dropdown */}
+          <div className="nav-user-chip-wrap" style={{ position: 'relative' }}>
+            <div
+              className="nav-user-chip"
+              onClick={() => setIsUserMenuOpen(prev => !prev)}
+              style={{ cursor: 'pointer' }}
+            >
+              {user.avatar ? (
+                <img src={user.avatar} alt="Avatar" className="nav-user-avatar" />
+              ) : (
+                <div className="nav-user-avatar-fallback">
+                  {(user.displayName || user.username || '?')[0].toUpperCase()}
+                </div>
+              )}
+              <span className="nav-user-name">{user.displayName || user.username}</span>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.15rem' }}>
+                {isUserMenuOpen ? '▲' : '▼'}
+              </span>
+            </div>
+
+            {/* Dropdown menu */}
+            {isUserMenuOpen && (
+              <>
+                {/* Backdrop to close */}
+                <div
+                  style={{ position: 'fixed', inset: 0, zIndex: 199 }}
+                  onClick={() => setIsUserMenuOpen(false)}
+                />
+                <div className="nav-dropdown">
+                  {/* User info header */}
+                  <div className="nav-dropdown-header">
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>
+                      {user.displayName}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>@{user.username}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                      ID: {user.roblox_id}
+                    </div>
+                  </div>
+                  <div className="nav-dropdown-divider" />
+                  <button
+                    className="nav-dropdown-item"
+                    onClick={handleManualSync}
+                    disabled={isSyncing}
+                  >
+                    <span>{isSyncing ? '⏳' : '🔄'}</span>
+                    <span>{isSyncing ? 'Menyinkronkan...' : 'Sync Sekarang'}</span>
+                  </button>
+                  <button
+                    className="nav-dropdown-item"
+                    onClick={() => { setIsMyProfileOpen(true); setIsUserMenuOpen(false); }}
+                  >
+                    <span>📋</span>
+                    <span>Riwayat Saya</span>
+                  </button>
+                  <button
+                    className="nav-dropdown-item"
+                    onClick={() => { setIsSettingsOpen(true); setIsUserMenuOpen(false); }}
+                  >
+                    <span>⚙️</span>
+                    <span>Pengaturan</span>
+                  </button>
+                  <div className="nav-dropdown-divider" />
+                  <button
+                    className="nav-dropdown-item nav-dropdown-item-danger"
+                    onClick={handleLogout}
+                  >
+                    <span>🚪</span>
+                    <span>Keluar</span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </nav>
 
-      {currentView === 'dashboard' && <Dashboard user={user} showToast={showToastMsg} />}
+      {currentView === 'dashboard' && (
+        <Dashboard
+          user={user}
+          showToast={showToastMsg}
+          onSync={handleManualSync}
+          isSyncing={isSyncing}
+        />
+      )}
       {currentView === 'admin' && <AdminDashboard user={user} showToast={showToastMsg} onBack={() => navigateTo('gameLists')} />}
       {currentView === 'gameLists' && (
         <GameListsPage
@@ -557,10 +593,18 @@ function App() {
         />
       )}
 
+      {/* Global modals */}
+      {isSettingsOpen && (
+        <SettingsModal user={user} onClose={() => setIsSettingsOpen(false)} showToast={showToastMsg} />
+      )}
+      {isMyProfileOpen && (
+        <MyProfileModal user={user} onClose={() => setIsMyProfileOpen(false)} />
+      )}
+
       {toast && (
         <div className={`toast toast-${toast.type}`}>
-          <span>{toast.type === 'success' ? '✅' : '❌'}</span>
-          <span>{toast.message}</span>
+          <span className="toast-icon">{toast.type === 'success' ? '✅' : '❌'}</span>
+          <span className="toast-message">{toast.message}</span>
         </div>
       )}
     </>

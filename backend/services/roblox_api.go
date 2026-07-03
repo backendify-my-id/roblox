@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/apany/roblox-friend-tracker/utils"
 	"github.com/google/uuid"
@@ -351,7 +352,21 @@ func GetUniverseDetails(universeID uint64) (string, string, uint64, error) {
 	targetURL := fmt.Sprintf("https://games.roblox.com/v1/games?universeIds=%d", universeID)
 
 	waitForRateLimit()
-	resp, err := http.Get(targetURL)
+	req, err := http.NewRequest("GET", targetURL, nil)
+	if err != nil {
+		return "", "", 0, err
+	}
+
+	// Request English localization
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Accept", "application/json")
+
+	// Use global cookie if configured
+	if globalCookie := os.Getenv("ROBLOSECURITY"); globalCookie != "" {
+		req.Header.Set("Cookie", ".ROBLOSECURITY="+globalCookie)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", "", 0, err
 	}
@@ -372,6 +387,93 @@ func GetUniverseDetails(universeID uint64) (string, string, uint64, error) {
 
 	return res.Data[0].Name, res.Data[0].Description, res.Data[0].RootPlaceId, nil
 }
+
+type UniverseDetails struct {
+	Name        string
+	Description string
+	RootPlaceID uint64
+}
+
+func GetUniverseDetailsBatch(universeIDs []uint64) (map[uint64]UniverseDetails, error) {
+	if len(universeIDs) == 0 {
+		return make(map[uint64]UniverseDetails), nil
+	}
+
+	idStrings := make([]string, len(universeIDs))
+	for i, id := range universeIDs {
+		idStrings[i] = fmt.Sprintf("%d", id)
+	}
+	idsQuery := strings.Join(idStrings, ",")
+
+	targetURL := fmt.Sprintf("https://games.roblox.com/v1/games?universeIds=%s", idsQuery)
+
+	waitForRateLimit()
+	req, err := http.NewRequest("GET", targetURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Accept", "application/json")
+
+	if globalCookie := os.Getenv("ROBLOSECURITY"); globalCookie != "" {
+		req.Header.Set("Cookie", ".ROBLOSECURITY="+globalCookie)
+	}
+
+	var resp *http.Response
+	var reqErr error
+	maxRetries := 5
+	backoff := 2 * time.Second
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		reqClone := req.Clone(req.Context())
+		resp, reqErr = http.DefaultClient.Do(reqClone)
+		if reqErr != nil {
+			if attempt == maxRetries-1 {
+				return nil, reqErr
+			}
+			time.Sleep(backoff)
+			backoff *= 2
+			continue
+		}
+
+		if resp.StatusCode == 429 {
+			resp.Body.Close()
+			utils.LogCron("WARNING", "[GetUniverseDetailsBatch] Roblox API returned 429 (Too Many Requests). Sleeping %v before retry %d/%d...", backoff, attempt+1, maxRetries)
+			time.Sleep(backoff)
+			backoff *= 2
+			continue
+		}
+
+		break
+	}
+
+	if reqErr != nil {
+		return nil, reqErr
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("games-api returned status: %d", resp.StatusCode)
+	}
+
+	var res UniverseDetailsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+
+	resultMap := make(map[uint64]UniverseDetails)
+	for _, d := range res.Data {
+		resultMap[d.ID] = UniverseDetails{
+			Name:        d.Name,
+			Description: d.Description,
+			RootPlaceID: d.RootPlaceId,
+		}
+	}
+
+	return resultMap, nil
+}
+
 
 func GetUniverseIDFromPlaceID(placeID uint64) (uint64, error) {
 	targetURL := fmt.Sprintf("https://apis.roblox.com/universes/v1/places/%d/universe", placeID)

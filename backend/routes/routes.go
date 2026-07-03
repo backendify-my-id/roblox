@@ -59,6 +59,8 @@ func Setup(app *fiber.App) {
 	api.Get("/maps", handlers.GetRobloxMaps)
 	api.Get("/maps/search-roblox", handlers.SearchRobloxGamesOnline)
 	api.Post("/maps", handlers.CreateRobloxMap)
+	api.Delete("/maps/:id", middleware.RequirePermission("manage_user_permissions"), handlers.DeleteRobloxMap)
+	api.Post("/maps/sync-names", middleware.RequirePermission("manage_user_permissions"), handlers.SyncRobloxMapNames)
 
 	// Game Media API
 	api.Get("/lists/:id/entries/:eid/media", handlers.GetGameMedia)
@@ -73,6 +75,7 @@ func Setup(app *fiber.App) {
 	api.Get("/admin/users", middleware.RequirePermission("view_users_list"), handlers.GetAllUsers)
 	api.Get("/admin/network-graph", middleware.RequirePermission("view_users_list"), handlers.GetFriendsNetworkGraph)
 	api.Get("/admin/stats", middleware.RequirePermission("view_users_list"), handlers.GetAdminStats)
+	api.Get("/admin/cron-status", middleware.RequirePermission("view_users_list"), handlers.GetCronStatus)
 	api.Put("/admin/users/:id/approve", middleware.RequirePermission("manage_user_permissions"), handlers.ApproveUser)
 	api.Get("/admin/playing-together", middleware.RequirePermission("view_playing_together"), handlers.GetPlayingTogether)
 	api.Get("/admin/playing-together/search", middleware.RequirePermission("view_playing_together"), handlers.SearchHistoricalCoPlayers)
@@ -89,4 +92,11 @@ func Setup(app *fiber.App) {
 	api.Get("/admin/logs/files/:filename", middleware.RequirePermission("view_users_list"), handlers.GetCronLogContent)
 	api.Get("/admin/backup", handlers.BackupDatabase)
 	api.Post("/admin/restore", handlers.RestoreDatabase)
+
+	// Auto-backup archive management routes
+	api.Get("/admin/backups/list", middleware.RequirePermission("view_users_list"), handlers.ListAutoBackups)
+	api.Get("/admin/backups/download/:filename", middleware.RequirePermission("view_users_list"), handlers.DownloadAutoBackup)
+	api.Post("/admin/backups/restore/:filename", middleware.RequirePermission("manage_user_permissions"), handlers.RestoreAutoBackup)
+	api.Delete("/admin/backups/delete/:filename", middleware.RequirePermission("manage_user_permissions"), handlers.DeleteAutoBackup)
+	api.Post("/admin/backups/trigger-auto", middleware.RequirePermission("manage_user_permissions"), handlers.TriggerAutoBackup)
 }

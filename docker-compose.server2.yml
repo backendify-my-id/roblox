@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Client Tunnel untuk menjangkau PostgreSQL (STB 2) secara aman via Cloudflare
+  cf-postgres-client:
+    image: cloudflare/cloudflared:latest
+    container_name: cf-postgres-client
+    restart: always
+    command: access tcp --hostname postgres-db.domainanda.com --url 0.0.0.0:5432
+    networks:
+      - roblox-network
+    # Buka baris di bawah ini jika Anda juga ingin mengakses DB ini dari host VPS di port 5433
+    # ports:
+    #   - "5433:5432"
+
+  # Client Tunnel untuk menjangkau Redis (STB 1) secara aman via Cloudflare
+  cf-redis-client:
+    image: cloudflare/cloudflared:latest
+    container_name: cf-redis-client
+    restart: always
+    command: access tcp --hostname redis-db.domainanda.com --url 0.0.0.0:6379
+    networks:
+      - roblox-network
+    # Buka baris di bawah ini jika Anda juga ingin mengakses Redis ini dari host VPS di port 6378
+    # ports:
+    #   - "6378:6379"
+
+  # Backend REST API & Cron Jobs (Berjalan di VPS - Instance 2)
+  backend:
+    build: ./backend
+    container_name: roblox-backend-vps
+    restart: always
+    env_file:
+      - ./backend/.env.server2
+    ports:
+      - "7000:7000"
+    volumes:
+      - ./backend/logs:/app/logs
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      - cf-postgres-client
+      - cf-redis-client
+    networks:
+      - roblox-network
+
+  # Frontend Dashboard App (Berjalan di VPS)
+  frontend:
+    build: ./frontend
+    container_name: roblox-frontend-vps
+    restart: always
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=https://roblox-api.backendify.my.id # Domain backend publik Anda
+    depends_on:
+      - backend
+    networks:
+      - roblox-network
+
+networks:
+  roblox-network:
+    driver: bridge
