@@ -78,7 +78,8 @@ export default defineConfig({
       "localhost",
       "192.168.1.11",
       "roblox.backendify.my.id",
-      "http://192.168.1.200"
+      "http://192.168.1.200",
+      "http://103.157.27.152:5173"
     ],
     hmr: {
       clientPort: 443,
