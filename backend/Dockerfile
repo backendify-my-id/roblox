@@ -20,8 +20,6 @@ WORKDIR /app
 
 # Copy the binary from the builder stage
 COPY --from=builder /app/main .
-# Copy .env if needed (though environment variables are preferred in Docker)
-COPY --from=builder /app/.env .
 
 # Install ca-certificates for HTTPS requests to Roblox API, postgresql-client for backups, and tzdata for timezones
 RUN apk --no-cache add ca-certificates postgresql-client tzdata
