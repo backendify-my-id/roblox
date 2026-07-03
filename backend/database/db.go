@@ -113,6 +113,7 @@ func ConnectDB() {
 		&models.GameEntry{},
 		&models.GameMedia{},
 		&models.GameReview{},
+		&models.SystemSetting{},
 	)
 	if err != nil {
 		log.Fatal("Failed to auto migrate database schemas: ", err)
@@ -122,6 +123,7 @@ func ConnectDB() {
 	// Custom data migration to normalize legacy game_entries name/roblox_link to RobloxMap
 
 	seedRolesAndPermissions(DB)
+	seedSystemSettings(DB)
 	// backfillShadowActivities(DB)
 }
 
@@ -253,6 +255,27 @@ func seedRolesAndPermissions(db *gorm.DB) {
 			log.Printf("Seeded role: %s with %d permissions", roleName, len(permissions))
 		} else {
 			db.Model(&role).Association("Permissions").Replace(permissions)
+		}
+	}
+}
+
+func seedSystemSettings(db *gorm.DB) {
+	defaultSettings := []models.SystemSetting{
+		{Key: "app_name", Value: "Co-Play Capsule", Type: "string"},
+		{Key: "enable_registration", Value: "true", Type: "boolean"},
+		{Key: "require_admin_approval", Value: "true", Type: "boolean"},
+		{Key: "shadow_activity_threshold", Value: "20", Type: "integer"},
+		{Key: "discord_webhook_url", Value: "", Type: "string"},
+		{Key: "maintenance_mode", Value: "false", Type: "boolean"},
+		{Key: "global_roblox_cookie", Value: "", Type: "string"},
+	}
+
+	for _, s := range defaultSettings {
+		var existing models.SystemSetting
+		if err := db.Where("key = ?", s.Key).First(&existing).Error; err != nil {
+			s.UpdatedAt = time.Now()
+			db.Create(&s)
+			log.Printf("Seeded system setting: %s = %s (%s)", s.Key, s.Value, s.Type)
 		}
 	}
 }

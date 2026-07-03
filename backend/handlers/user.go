@@ -39,29 +39,33 @@ func GetUserSettings(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"is_stealth": user.IsStealth,
-		"exempts":    exempts,
-		"role":       c.Locals("role"),
-		"has_cookie": user.RobloxCookie != "",
+		"is_stealth":            user.IsStealth,
+		"exempts":               exempts,
+		"role":                  c.Locals("role"),
+		"has_cookie":            user.RobloxCookie != "",
+		"theme_preference":     user.ThemePreference,
+		"show_display_names":    user.ShowDisplayNames,
+		"live_notifications":    user.LiveNotifications,
+		"sound_effects_enabled": user.SoundEffectsEnabled,
 	})
 }
 
-func UpdateStealthMode(c *fiber.Ctx) error {
+func UpdateUserSettings(c *fiber.Ctx) error {
 	role := c.Locals("role").(string)
 	userID, err := getUserID(c)
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
 	}
-	
-	if role != "admin" {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Hanya Admin yang dapat menggunakan fitur ini"})
+
+	var input struct {
+		IsStealth           *bool  `json:"is_stealth"`
+		ThemePreference     string `json:"theme_preference"`
+		ShowDisplayNames    *bool  `json:"show_display_names"`
+		LiveNotifications   *bool  `json:"live_notifications"`
+		SoundEffectsEnabled *bool  `json:"sound_effects_enabled"`
 	}
 
-	type Request struct {
-		IsStealth bool `json:"is_stealth"`
-	}
-	req := new(Request)
-	if err := c.BodyParser(req); err != nil {
+	if err := c.BodyParser(&input); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
@@ -71,29 +75,77 @@ func UpdateStealthMode(c *fiber.Ctx) error {
 	}
 
 	wasStealth := user.IsStealth
+	updates := make(map[string]interface{})
 
-	if err := database.DB.Model(&models.User{}).Where("id = ?", userID).Update("is_stealth", req.IsStealth).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal memperbarui pengaturan"})
-	}
-
-	// Jika mode siluman diaktifkan, buat log fake offline agar non-exempt user melihatnya
-	if req.IsStealth && !wasStealth {
-		fakeLog := models.ActivityLog{
-			UserID:    userID,
-			Status:    "Stealth Offline",
-			GameName:  "-",
-			IsStealth: true,
+	// Handle is_stealth update (Admin only)
+	if input.IsStealth != nil {
+		if *input.IsStealth != user.IsStealth {
+			if role != "admin" {
+				return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Hanya Admin yang dapat mengaktifkan/menonaktifkan Mode Siluman"})
+			}
+			updates["is_stealth"] = *input.IsStealth
 		}
-		database.DB.Create(&fakeLog)
 	}
 
-	// Kirim broadcast WebSocket real-time ke semua pelacak agar perubahan status langsung termuat di layar mereka
-	services.Hub.Broadcast(services.WSMessage{
-		Type:   "presence_update",
-		UserID: userID,
-	})
+	// Handle other preferences
+	if input.ThemePreference != "" {
+		if input.ThemePreference != "dark" && input.ThemePreference != "light" && input.ThemePreference != "system" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Preferensi tema tidak valid"})
+		}
+		updates["theme_preference"] = input.ThemePreference
+	}
 
-	return c.JSON(fiber.Map{"message": "Mode Siluman diperbarui", "is_stealth": req.IsStealth})
+	if input.ShowDisplayNames != nil {
+		updates["show_display_names"] = *input.ShowDisplayNames
+	}
+
+	if input.LiveNotifications != nil {
+		updates["live_notifications"] = *input.LiveNotifications
+	}
+
+	if input.SoundEffectsEnabled != nil {
+		updates["sound_effects_enabled"] = *input.SoundEffectsEnabled
+	}
+
+	if len(updates) > 0 {
+		if err := database.DB.Model(&user).Updates(updates).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal menyimpan preferensi"})
+		}
+
+		// Broadcast update if stealth mode changed
+		if _, exists := updates["is_stealth"]; exists {
+			newStealth := *input.IsStealth
+
+			if newStealth && !wasStealth {
+				fakeLog := models.ActivityLog{
+					UserID:    userID,
+					Status:    "Stealth Offline",
+					GameName:  "-",
+					IsStealth: true,
+				}
+				database.DB.Create(&fakeLog)
+			}
+
+			services.Hub.Broadcast(services.WSMessage{
+				Type:   "presence_update",
+				UserID: userID,
+			})
+		}
+	}
+
+	// Reload user to get latest values
+	database.DB.First(&user, userID)
+
+	return c.JSON(fiber.Map{
+		"message": "Pengaturan berhasil diperbarui",
+		"settings": fiber.Map{
+			"is_stealth":            user.IsStealth,
+			"theme_preference":     user.ThemePreference,
+			"show_display_names":    user.ShowDisplayNames,
+			"live_notifications":    user.LiveNotifications,
+			"sound_effects_enabled": user.SoundEffectsEnabled,
+		},
+	})
 }
 
 func AddStealthExemption(c *fiber.Ctx) error {

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/apany/roblox-friend-tracker/database"
+	"github.com/apany/roblox-friend-tracker/models"
 	"github.com/apany/roblox-friend-tracker/utils"
 	"github.com/google/uuid"
 )
@@ -32,7 +34,8 @@ type FriendData struct {
 }
 
 type FriendsResponse struct {
-	Data []FriendData `json:"data"`
+	NextPageCursor string       `json:"nextPageCursor"`
+	Data           []FriendData `json:"data"`
 }
 
 type AvatarResponse struct {
@@ -116,10 +119,36 @@ func GetUserDetails(userIds []uint64) (map[uint64]UserDetailData, error) {
 		}
 		body, _ := json.Marshal(payload)
 
-		waitForRateLimit()
-		resp, err := http.Post("https://users.roblox.com/v1/users", "application/json", bytes.NewBuffer(body))
-		if err != nil {
-			utils.LogCron("ERROR", "[GetUserDetails] HTTP error for batch: %v", err)
+		var resp *http.Response
+		var reqErr error
+		maxRetries := 5
+		backoff := 2 * time.Second
+
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			waitForRateLimit()
+			resp, reqErr = http.Post("https://users.roblox.com/v1/users", "application/json", bytes.NewBuffer(body))
+			if reqErr != nil {
+				if attempt == maxRetries-1 {
+					break
+				}
+				time.Sleep(backoff)
+				backoff *= 2
+				continue
+			}
+
+			if resp.StatusCode == 429 {
+				resp.Body.Close()
+				utils.LogCron("WARNING", "[GetUserDetails] API returned 429. Sleeping %v before retry %d/%d...", backoff, attempt+1, maxRetries)
+				time.Sleep(backoff)
+				backoff *= 2
+				continue
+			}
+
+			break
+		}
+
+		if reqErr != nil {
+			utils.LogCron("ERROR", "[GetUserDetails] HTTP error for batch: %v", reqErr)
 			continue
 		}
 
@@ -145,25 +174,131 @@ func GetUserDetails(userIds []uint64) (map[uint64]UserDetailData, error) {
 	return result, nil
 }
 
+type FindFriendsResponse struct {
+	NextCursor string `json:"NextCursor"`
+	PageItems  []struct {
+		Id          int64  `json:"id"`
+		Name        string `json:"name"`
+		DisplayName string `json:"displayName"`
+	} `json:"PageItems"`
+}
+
+func getFriendsPaginated(userId uint64, cookie string) ([]FriendData, error) {
+	var allFriends []FriendData
+	cursor := ""
+
+	for {
+		apiUrl := fmt.Sprintf("https://friends.roblox.com/v1/users/%d/friends/find", userId)
+		if cursor != "" {
+			apiUrl = fmt.Sprintf("%s?cursor=%s", apiUrl, url.QueryEscape(cursor))
+		}
+
+		req, err := http.NewRequest("GET", apiUrl, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("Cookie", ".ROBLOSECURITY="+cookie)
+		waitForRateLimit()
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		
+		if resp.StatusCode != 200 {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("status code: %d, body: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		}
+
+		var res FindFriendsResponse
+		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+			resp.Body.Close()
+			return nil, err
+		}
+		resp.Body.Close()
+
+		for _, item := range res.PageItems {
+			if item.Id < 0 {
+				continue // Skip placeholder/invalid users
+			}
+			allFriends = append(allFriends, FriendData{
+				Id:          uint64(item.Id),
+				Name:        item.Name,
+				DisplayName: item.DisplayName,
+			})
+		}
+
+		if res.NextCursor == "" {
+			break
+		}
+		cursor = res.NextCursor
+	}
+
+	return allFriends, nil
+}
+
 func GetFriends(userId uint64) ([]FriendData, error) {
-	url := fmt.Sprintf("https://friends.roblox.com/v1/users/%d/friends", userId)
-	waitForRateLimit()
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+	cookie := getGlobalCookie()
 
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("failed to fetch friends: %d", resp.StatusCode)
-	}
-
-	var res FriendsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		return nil, err
+	// Check if this Roblox user has their own encrypted cookie in database
+	var dbUser models.User
+	if database.DB != nil {
+		robloxIDStr := fmt.Sprintf("%d", userId)
+		if err := database.DB.Where("roblox_user_id = ? AND roblox_cookie != ''", robloxIDStr).First(&dbUser).Error; err == nil {
+			decryptedCookie, decryptErr := utils.Decrypt(dbUser.RobloxCookie)
+			if decryptErr == nil && decryptedCookie != "" {
+				cookie = decryptedCookie
+			}
+		}
 	}
 
-	return res.Data, nil
+	if cookie != "" {
+		friends, err := getFriendsPaginated(userId, cookie)
+		if err == nil && len(friends) > 0 {
+			return friends, nil
+		}
+		utils.LogCron("WARNING", "[GetFriends] getFriendsPaginated failed for userId %d: %v. Falling back to legacy endpoint...", userId, err)
+	}
+
+	var allFriends []FriendData
+	cursor := ""
+
+	for {
+		targetURL := fmt.Sprintf("https://friends.roblox.com/v1/users/%d/friends?limit=100", userId)
+		if cursor != "" {
+			targetURL = fmt.Sprintf("%s&cursor=%s", targetURL, url.QueryEscape(cursor))
+		}
+
+		waitForRateLimit()
+		resp, err := http.Get(targetURL)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode != 200 {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("failed to fetch friends: %d, body: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		}
+
+		var res FriendsResponse
+		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+			resp.Body.Close()
+			return nil, err
+		}
+		resp.Body.Close()
+
+		allFriends = append(allFriends, res.Data...)
+
+		if res.NextPageCursor == "" {
+			break
+		}
+		cursor = res.NextPageCursor
+	}
+
+	return allFriends, nil
 }
 
 func GetAvatars(userIds []uint64) (map[uint64]string, error) {
@@ -235,7 +370,7 @@ func GetPresences(userIds []uint64, robloxCookie string) (map[uint64]PresenceDat
 
 	cookie := robloxCookie
 	if cookie == "" {
-		cookie = os.Getenv("ROBLOSECURITY")
+		cookie = getGlobalCookie()
 	}
 	if cookie != "" {
 		req.Header.Set("Cookie", ".ROBLOSECURITY="+cookie)
@@ -299,7 +434,7 @@ func SearchRobloxGames(searchQuery string, robloxCookie string) ([]OmniSearchRes
 
 	cookie := robloxCookie
 	if cookie == "" {
-		cookie = os.Getenv("ROBLOSECURITY")
+		cookie = getGlobalCookie()
 	}
 	if cookie != "" {
 		req.Header.Set("Cookie", ".ROBLOSECURITY="+cookie)
@@ -362,7 +497,7 @@ func GetUniverseDetails(universeID uint64) (string, string, uint64, error) {
 	req.Header.Set("Accept", "application/json")
 
 	// Use global cookie if configured
-	if globalCookie := os.Getenv("ROBLOSECURITY"); globalCookie != "" {
+	if globalCookie := getGlobalCookie(); globalCookie != "" {
 		req.Header.Set("Cookie", ".ROBLOSECURITY="+globalCookie)
 	}
 
@@ -416,7 +551,7 @@ func GetUniverseDetailsBatch(universeIDs []uint64) (map[uint64]UniverseDetails, 
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	req.Header.Set("Accept", "application/json")
 
-	if globalCookie := os.Getenv("ROBLOSECURITY"); globalCookie != "" {
+	if globalCookie := getGlobalCookie(); globalCookie != "" {
 		req.Header.Set("Cookie", ".ROBLOSECURITY="+globalCookie)
 	}
 
@@ -474,7 +609,6 @@ func GetUniverseDetailsBatch(universeIDs []uint64) (map[uint64]UniverseDetails, 
 	return resultMap, nil
 }
 
-
 func GetUniverseIDFromPlaceID(placeID uint64) (uint64, error) {
 	targetURL := fmt.Sprintf("https://apis.roblox.com/universes/v1/places/%d/universe", placeID)
 	waitForRateLimit()
@@ -525,4 +659,12 @@ func ValidateCookie(cookie string) (uint64, string, error) {
 	}
 
 	return res.ID, res.Name, nil
+}
+
+func getGlobalCookie() string {
+	cookie := GetSystemSettingString("global_roblox_cookie", "")
+	if cookie == "" {
+		cookie = os.Getenv("ROBLOSECURITY")
+	}
+	return cookie
 }

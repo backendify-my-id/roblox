@@ -13,7 +13,7 @@ import GameEntryDetailPage from './components/GameEntryDetailPage';
 import PublicGameListPage from './components/PublicGameListPage';
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
-function Dashboard({ user, showToast, onSync, isSyncing, onOpenProfile, onOpenSettings }) {
+function Dashboard({ user, appName = 'Co-Play Capsule', showToast, onSync, isSyncing, onOpenProfile, onOpenSettings }) {
   const [friends, setFriends] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -149,7 +149,7 @@ function Dashboard({ user, showToast, onSync, isSyncing, onOpenProfile, onOpenSe
       <div className="dashboard-header">
         <div className="header-info">
           <h1 className="header-title">
-            ✨ Roblox Co-Play & Memory Capsule 💖
+            ✨ {appName} 💖
           </h1>
           <p className="header-desc">
             Kapsul waktu kenangan & bucket list petualangan Roblox bersama orang-orang tersayang! 🚀
@@ -284,6 +284,7 @@ function Dashboard({ user, showToast, onSync, isSyncing, onOpenProfile, onOpenSe
                 <FriendCard
                   key={f.id}
                   friend={f}
+                  showDisplayNames={user.show_display_names !== false}
                   onClickLog={setSelectedFriendLog}
                   onClickProfileLog={setSelectedProfileLog}
                   onSaveNote={handleSaveNote}
@@ -322,6 +323,64 @@ function App() {
     const val = localStorage.getItem('activeEntryId');
     return val ? parseInt(val, 10) : null;
   });
+
+  const [appName, setAppName] = useState('Co-Play Capsule');
+  const [enableRegistration, setEnableRegistration] = useState(true);
+
+  // Load public configs (App Name, enable registration)
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.app_name) {
+            setAppName(data.app_name);
+            document.title = data.app_name; // Set browser tab title
+          }
+          if (data.enable_registration !== undefined) {
+            setEnableRegistration(data.enable_registration);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching public system config:', err);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  // Apply theme when user preference or user state changes
+  useEffect(() => {
+    const applyTheme = (theme) => {
+      const root = document.documentElement;
+      if (theme === 'light') {
+        root.classList.add('light-theme');
+      } else if (theme === 'dark') {
+        root.classList.remove('light-theme');
+      } else if (theme === 'system') {
+        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (systemDark) {
+          root.classList.remove('light-theme');
+        } else {
+          root.classList.add('light-theme');
+        }
+      }
+    };
+
+    if (user && user.theme_preference) {
+      applyTheme(user.theme_preference);
+      
+      // Listen for system preference changes if system theme selected
+      if (user.theme_preference === 'system') {
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleSystemThemeChange = () => applyTheme('system');
+        mediaQuery.addEventListener('change', handleSystemThemeChange);
+        return () => mediaQuery.removeEventListener('change', handleSystemThemeChange);
+      }
+    } else {
+      document.documentElement.classList.remove('light-theme'); // Default to dark mode
+    }
+  }, [user]);
 
   // User dropdown & modal state (lifted from Dashboard)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -440,7 +499,12 @@ function App() {
   if (!token || !user) {
     return (
       <>
-        <Auth onLogin={handleLogin} showToast={showToastMsg} />
+        <Auth 
+          onLogin={handleLogin} 
+          showToast={showToastMsg} 
+          appName={appName}
+          enableRegistration={enableRegistration}
+        />
         {toast && (
           <div className={`toast toast-${toast.type}`}>
             <span className="toast-icon">{toast.type === 'success' ? '✅' : '❌'}</span>
@@ -456,7 +520,7 @@ function App() {
       <nav className="navbar">
         <div className="nav-logo" onClick={() => navigateTo('dashboard')}>
           <span className="logo-emoji">✨</span>
-          <span className="logo-text">Co-Play Capsule</span>
+          <span className="logo-text">{appName}</span>
         </div>
         
         <div className="nav-actions">
@@ -561,12 +625,28 @@ function App() {
       {currentView === 'dashboard' && (
         <Dashboard
           user={user}
+          appName={appName}
           showToast={showToastMsg}
           onSync={handleManualSync}
           isSyncing={isSyncing}
         />
       )}
-      {currentView === 'admin' && <AdminDashboard user={user} showToast={showToastMsg} onBack={() => navigateTo('gameLists')} />}
+      {currentView === 'admin' && (
+        <AdminDashboard 
+          user={user} 
+          showToast={showToastMsg} 
+          onConfigUpdate={(newConfig) => {
+            if (newConfig.app_name) {
+              setAppName(newConfig.app_name);
+              document.title = newConfig.app_name;
+            }
+            if (newConfig.enable_registration !== undefined) {
+              setEnableRegistration(newConfig.enable_registration);
+            }
+          }}
+          onBack={() => navigateTo('gameLists')} 
+        />
+      )}
       {currentView === 'gameLists' && (
         <GameListsPage
           user={user}
@@ -595,7 +675,30 @@ function App() {
 
       {/* Global modals */}
       {isSettingsOpen && (
-        <SettingsModal user={user} onClose={() => setIsSettingsOpen(false)} showToast={showToastMsg} />
+        <SettingsModal 
+          user={user} 
+          onUserUpdate={(updatedUser) => {
+            setUser(updatedUser);
+            // Apply theme changes if theme was updated
+            if (updatedUser.theme_preference) {
+              const root = document.documentElement;
+              if (updatedUser.theme_preference === 'light') {
+                root.classList.add('light-theme');
+              } else if (updatedUser.theme_preference === 'dark') {
+                root.classList.remove('light-theme');
+              } else {
+                const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if (systemDark) {
+                  root.classList.remove('light-theme');
+                } else {
+                  root.classList.add('light-theme');
+                }
+              }
+            }
+          }}
+          onClose={() => setIsSettingsOpen(false)} 
+          showToast={showToastMsg} 
+        />
       )}
       {isMyProfileOpen && (
         <MyProfileModal user={user} onClose={() => setIsMyProfileOpen(false)} />

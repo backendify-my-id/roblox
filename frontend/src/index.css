@@ -10,11 +10,25 @@
   --accent-hover: #db2777;
   --accent-purple: #8b5cf6;
   --accent-purple-hover: #7c3aed;
+  --border: rgba(255, 255, 255, 0.1);
   
   --status-online: #10b981;
   --status-offline: #64748b;
   --status-ingame: #fbbf24;
   --status-instudio: #f97316;
+}
+
+:root.light-theme {
+  --bg-dark: #f8fafc;
+  --bg-card: rgba(255, 255, 255, 0.85);
+  --bg-card-solid: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --accent-primary: #db2777;
+  --accent-hover: #be185d;
+  --accent-purple: #6d28d9;
+  --accent-purple-hover: #5b21b6;
+  --border: rgba(148, 163, 184, 0.25);
 }
 
 * {

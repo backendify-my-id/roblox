@@ -23,6 +23,9 @@ type AuthRequest struct {
 }
 
 func Register(c *fiber.Ctx) error {
+	if !services.GetSystemSettingBool("enable_registration", true) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Pendaftaran pengguna baru sedang ditutup oleh administrator."})
+	}
 	req := new(AuthRequest)
 	if err := c.BodyParser(req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
@@ -76,6 +79,8 @@ func Register(c *fiber.Ctx) error {
 	if registeredCount == 0 {
 		database.DB.Where("name = ?", "admin").First(&role)
 		isApproved = true
+	} else {
+		isApproved = !services.GetSystemSettingBool("require_admin_approval", true)
 	}
 
 	if existingUser.ID != 0 {
@@ -161,13 +166,17 @@ func Login(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"token": t,
 		"user": fiber.Map{
-			"id":          user.ID,
-			"username":    user.RobloxUsername,
-			"displayName": user.RobloxDisplayName,
-			"roblox_id":   user.RobloxUserID,
-			"avatar":      user.AvatarURL,
-			"role":        user.Role.Name,
-			"permissions": permissions,
+			"id":                    user.ID,
+			"username":              user.RobloxUsername,
+			"displayName":           user.RobloxDisplayName,
+			"roblox_id":             user.RobloxUserID,
+			"avatar":                user.AvatarURL,
+			"role":                  user.Role.Name,
+			"permissions":           permissions,
+			"theme_preference":      user.ThemePreference,
+			"show_display_names":    user.ShowDisplayNames,
+			"live_notifications":    user.LiveNotifications,
+			"sound_effects_enabled": user.SoundEffectsEnabled,
 		},
 	})
 }
@@ -198,4 +207,14 @@ func Logout(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "Logged out successfully"})
+}
+
+func GetPublicConfig(c *fiber.Ctx) error {
+	appName := services.GetSystemSettingString("app_name", "Co-Play Capsule")
+	enableRegistration := services.GetSystemSettingBool("enable_registration", true)
+	
+	return c.JSON(fiber.Map{
+		"app_name":            appName,
+		"enable_registration": enableRegistration,
+	})
 }

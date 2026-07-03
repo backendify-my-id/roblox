@@ -878,6 +878,14 @@ func ReviewShadowActivity(c *fiber.Ctx) error {
 func UpdateUserRole(c *fiber.Ctx) error {
 	userId := c.Params("id")
 
+	currentUserID, err := getUserID(c)
+	if err == nil {
+		targetUserIDVal, parseErr := strconv.ParseUint(userId, 10, 64)
+		if parseErr == nil && uint(targetUserIDVal) == currentUserID {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Anda tidak diperbolehkan mengubah peran (role) Anda sendiri untuk mencegah lockout"})
+		}
+	}
+
 	var input struct {
 		RoleName string `json:"role_name"`
 	}
@@ -1210,15 +1218,8 @@ func GetCronStatus(c *fiber.Ctx) error {
 		})
 	}
 
-	// Read instance configuration from Env
-	instanceID := 1
-	totalInstances := 1
-	if idStr := os.Getenv("INSTANCE_ID"); idStr != "" {
-		fmt.Sscanf(idStr, "%d", &instanceID)
-	}
-	if totalStr := os.Getenv("TOTAL_INSTANCES"); totalStr != "" {
-		fmt.Sscanf(totalStr, "%d", &totalInstances)
-	}
+	// Read instance configuration dynamically from cache
+	instanceID, totalInstances := cache.GetClusterConfig()
 
 	return c.JSON(fiber.Map{
 		"remaining_hits":  remainingHits,
@@ -1404,4 +1405,73 @@ func RestoreAutoBackup(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "Database successfully restored from archive: " + filename})
+}
+
+func GetSystemSettings(c *fiber.Ctx) error {
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
+	}
+
+	var settings []models.SystemSetting
+	if err := database.DB.Find(&settings).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch settings"})
+	}
+
+	res := make(map[string]interface{})
+	for _, s := range settings {
+		if s.Key == "global_roblox_cookie" {
+			if s.Value != "" {
+				res[s.Key] = "********"
+			} else {
+				res[s.Key] = ""
+			}
+		} else if s.Type == "boolean" {
+			val, _ := strconv.ParseBool(s.Value)
+			res[s.Key] = val
+		} else if s.Type == "integer" {
+			val, _ := strconv.Atoi(s.Value)
+			res[s.Key] = val
+		} else {
+			res[s.Key] = s.Value
+		}
+	}
+
+	return c.JSON(res)
+}
+
+func UpdateSystemSettings(c *fiber.Ctx) error {
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden: Admin access required"})
+	}
+
+	var input map[string]interface{}
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
+	}
+
+	for k, v := range input {
+		valStr := fmt.Sprintf("%v", v)
+
+		// Handle security mask for global_roblox_cookie
+		if k == "global_roblox_cookie" {
+			if valStr == "********" {
+				continue // Skip update if unchanged
+			}
+			if valStr != "" {
+				// Validate Roblox Cookie
+				_, _, err := services.ValidateCookie(valStr)
+				if err != nil {
+					return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Cookie Roblox global tidak valid: " + err.Error()})
+				}
+			}
+		}
+
+		if err := services.SetSystemSetting(k, valStr); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": fmt.Sprintf("Failed to update setting %s", k)})
+		}
+	}
+
+	return c.JSON(fiber.Map{"message": "Pengaturan sistem berhasil diperbarui"})
 }

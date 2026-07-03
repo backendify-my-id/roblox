@@ -16,20 +16,7 @@ import (
 )
 
 func getInstanceConfig() (int, int) {
-	instanceID := 1
-	totalInstances := 1
-
-	if idStr := os.Getenv("INSTANCE_ID"); idStr != "" {
-		if id, err := strconv.Atoi(idStr); err == nil && id > 0 {
-			instanceID = id
-		}
-	}
-	if totalStr := os.Getenv("TOTAL_INSTANCES"); totalStr != "" {
-		if total, err := strconv.Atoi(totalStr); err == nil && total > 0 {
-			totalInstances = total
-		}
-	}
-	return instanceID, totalInstances
+	return cache.GetClusterConfig()
 }
 
 func updateCronMetadata(jobName string, instanceID int, status string, start time.Time, duration time.Duration, extra map[string]interface{}) {
@@ -66,6 +53,13 @@ func updateCronMetadata(jobName string, instanceID int, status string, start tim
 }
 
 func StartJobs() {
+	instanceID, _ := getInstanceConfig()
+	if cache.RDB != nil {
+		cache.RDB.Del(cache.Ctx, fmt.Sprintf("lock:friends_sync:%d", instanceID))
+		cache.RDB.Del(cache.Ctx, fmt.Sprintf("lock:presence_sync:%d", instanceID))
+		LogCron("INFO", "[Startup] Cleared stale Redis locks for instance %d", instanceID)
+	}
+
 	c := cron.New()
 
 	// Every 15 minutes (Profile & Friends Sync)
@@ -110,23 +104,25 @@ func syncAllFriends() {
 		"processed_count": 0,
 		"failed_count":    0,
 	})
-	lockKey := fmt.Sprintf("lock:friends_sync:%d", instanceID)
-	// Try to acquire lock with 14 minutes expiration (since job runs every 15 mins)
-	acquired, err := cache.RDB.SetNX(cache.Ctx, lockKey, "locked", 14*time.Minute).Result()
-	if err != nil {
-		LogCron("ERROR", "[FriendsSync] Failed to acquire Redis lock due to error: %v", err)
-		return
+	if cache.RDB != nil {
+		lockKey := fmt.Sprintf("lock:friends_sync:%d", instanceID)
+		acquired, err := cache.RDB.SetNX(cache.Ctx, lockKey, "locked", 14*time.Minute).Result()
+		if err != nil {
+			LogCron("ERROR", "[FriendsSync] Failed to acquire Redis lock due to error: %v", err)
+			return
+		}
+		if !acquired {
+			LogCron("WARNING", "[FriendsSync] Sync skipped: another instance is currently running the sync lock for instance %d.", instanceID)
+			return
+		}
+		defer func() {
+			cache.RDB.Del(cache.Ctx, lockKey)
+			LogCron("INFO", "[FriendsSync] Released Redis lock '%s'.", lockKey)
+		}()
+		LogCron("INFO", "[FriendsSync] Successfully acquired Redis lock '%s' for friends & profile sync.", lockKey)
+	} else {
+		LogCron("WARNING", "[FriendsSync] Redis connection is offline. Running sync without lock...")
 	}
-	if !acquired {
-		LogCron("WARNING", "[FriendsSync] Sync skipped: another instance is currently running the sync lock for instance %d.", instanceID)
-		return
-	}
-	defer func() {
-		cache.RDB.Del(cache.Ctx, lockKey)
-		LogCron("INFO", "[FriendsSync] Released Redis lock '%s'.", lockKey)
-	}()
-
-	LogCron("INFO", "[FriendsSync] Successfully acquired Redis lock '%s' for friends & profile sync.", lockKey)
 
 	var users []models.User
 	// Only sync friends for registered users who are approved, partitioned by instance ID if multi-instance
@@ -177,23 +173,25 @@ func syncAllPresences() {
 		"processed_count": 0,
 		"change_count":    0,
 	})
-	lockKey := fmt.Sprintf("lock:presence_sync:%d", instanceID)
-	// Try to acquire lock with 4 minutes expiration (since job runs every 5 mins)
-	acquired, err := cache.RDB.SetNX(cache.Ctx, lockKey, "locked", 4*time.Minute).Result()
-	if err != nil {
-		LogCron("ERROR", "[PresenceSync] Failed to acquire Redis lock due to error: %v", err)
-		return
+	if cache.RDB != nil {
+		lockKey := fmt.Sprintf("lock:presence_sync:%d", instanceID)
+		acquired, err := cache.RDB.SetNX(cache.Ctx, lockKey, "locked", 4*time.Minute).Result()
+		if err != nil {
+			LogCron("ERROR", "[PresenceSync] Failed to acquire Redis lock due to error: %v", err)
+			return
+		}
+		if !acquired {
+			LogCron("WARNING", "[PresenceSync] Sync skipped: another instance is currently running the presence sync lock for instance %d.", instanceID)
+			return
+		}
+		defer func() {
+			cache.RDB.Del(cache.Ctx, lockKey)
+			LogCron("INFO", "[PresenceSync] Released Redis lock '%s'.", lockKey)
+		}()
+		LogCron("INFO", "[PresenceSync] Successfully acquired Redis lock '%s' for presence sync.", lockKey)
+	} else {
+		LogCron("WARNING", "[PresenceSync] Redis connection is offline. Running sync without lock...")
 	}
-	if !acquired {
-		LogCron("WARNING", "[PresenceSync] Sync skipped: another instance is currently running the presence sync lock for instance %d.", instanceID)
-		return
-	}
-	defer func() {
-		cache.RDB.Del(cache.Ctx, lockKey)
-		LogCron("INFO", "[PresenceSync] Released Redis lock '%s'.", lockKey)
-	}()
-
-	LogCron("INFO", "[PresenceSync] Successfully acquired Redis lock '%s' for presence sync.", lockKey)
 
 	// Fetch all approved registered users, partitioned by instance ID if multi-instance
 	var registeredUsers []models.User

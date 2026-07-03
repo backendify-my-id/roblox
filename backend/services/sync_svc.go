@@ -181,7 +181,8 @@ func logChange(targetUserID uint, ownerID uint, username, changeType, oldVal, ne
 					Order("created_at DESC").
 					First(&lastOfflineLog).Error
 
-				const shadowThreshold = 20 * time.Minute
+				thresholdMinutes := GetSystemSettingInt("shadow_activity_threshold", 20)
+				shadowThreshold := time.Duration(thresholdMinutes) * time.Minute
 
 				if err != nil {
 					// Tidak ada log Offline sama sekali — skip, data tidak cukup

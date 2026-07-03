@@ -15,6 +15,7 @@ func Setup(app *fiber.App) {
 	api.Post("/auth/login", handlers.Login)
 	api.Post("/auth/logout", middleware.Protected(), handlers.Logout)
 	api.Get("/public/lists/:shareToken", handlers.GetPublicGameList)
+	api.Get("/config", handlers.GetPublicConfig)
 
 	// WebSocket Route
 	api.Get("/ws", handlers.UpgradeWebSocket, handlers.HandleWebSocket())
@@ -29,7 +30,7 @@ func Setup(app *fiber.App) {
 	api.Get("/friends/:friendId/profile-changes", handlers.GetProfileChangeLogs)
 	api.Put("/friends/:friendId/note", handlers.UpdateFriendNote)
 	api.Get("/user/settings", handlers.GetUserSettings)
-	api.Put("/user/settings", handlers.UpdateStealthMode)
+	api.Put("/user/settings", handlers.UpdateUserSettings)
 	api.Put("/user/roblox-cookie", handlers.UpdateRobloxCookie)
 	api.Put("/user/change-password", handlers.ChangePassword)
 	api.Post("/user/stealth-exemptions", handlers.AddStealthExemption)
@@ -90,8 +91,10 @@ func Setup(app *fiber.App) {
 	api.Put("/admin/users/:id/role", middleware.RequirePermission("manage_user_permissions"), handlers.UpdateUserRole)
 	api.Get("/admin/logs/files", middleware.RequirePermission("view_users_list"), handlers.GetCronLogFiles)
 	api.Get("/admin/logs/files/:filename", middleware.RequirePermission("view_users_list"), handlers.GetCronLogContent)
-	api.Get("/admin/backup", handlers.BackupDatabase)
-	api.Post("/admin/restore", handlers.RestoreDatabase)
+	api.Get("/admin/backup", middleware.RequirePermission("manage_user_permissions"), handlers.BackupDatabase)
+	api.Post("/admin/restore", middleware.RequirePermission("manage_user_permissions"), handlers.RestoreDatabase)
+	api.Get("/admin/settings", middleware.RequirePermission("manage_user_permissions"), handlers.GetSystemSettings)
+	api.Put("/admin/settings", middleware.RequirePermission("manage_user_permissions"), handlers.UpdateSystemSettings)
 
 	// Auto-backup archive management routes
 	api.Get("/admin/backups/list", middleware.RequirePermission("view_users_list"), handlers.ListAutoBackups)

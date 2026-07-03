@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { fetchWithAuth } from '../utils/api';
 
-const Auth = ({ onLogin, showToast }) => {
+const Auth = ({ onLogin, showToast, appName = 'Co-Play Capsule', enableRegistration = true }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -48,7 +48,7 @@ const Auth = ({ onLogin, showToast }) => {
         {/* Logo */}
         <div className="auth-logo">
           <span className="auth-logo-icon">✨</span>
-          <div className="auth-title">Co-Play Capsule</div>
+          <div className="auth-title">{appName}</div>
           <div className="auth-subtitle">
             {isLogin ? 'Selamat datang kembali! 💖' : 'Buat akun baru dan mulai petualangan! 🚀'}
           </div>
@@ -94,13 +94,28 @@ const Auth = ({ onLogin, showToast }) => {
         </form>
 
         <div className="auth-switch">
-          {isLogin ? 'Belum punya akun? ' : 'Sudah punya akun? '}
-          <span
-            className="auth-switch-link"
-            onClick={() => { setIsLogin(!isLogin); setError(''); }}
-          >
-            {isLogin ? 'Daftar sekarang' : 'Login di sini'}
-          </span>
+          {enableRegistration ? (
+            <>
+              {isLogin ? 'Belum punya akun? ' : 'Sudah punya akun? '}
+              <span
+                className="auth-switch-link"
+                onClick={() => { setIsLogin(!isLogin); setError(''); }}
+              >
+                {isLogin ? 'Daftar sekarang' : 'Login di sini'}
+              </span>
+            </>
+          ) : (
+            isLogin ? (
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Pendaftaran baru sedang ditutup.</span>
+            ) : (
+              <span
+                className="auth-switch-link"
+                onClick={() => { setIsLogin(true); setError(''); }}
+              >
+                Kembali ke Login
+              </span>
+            )
+          )}
         </div>
       </div>
     </div>

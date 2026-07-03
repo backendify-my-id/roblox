@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { fetchWithAuth } from '../utils/api';
 
-const SettingsModal = ({ user, onClose, showToast }) => {
+const SettingsModal = ({ user, onUserUpdate, onClose, showToast }) => {
   const [isStealth, setIsStealth] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [exempts, setExempts] = useState([]);
@@ -10,6 +10,12 @@ const SettingsModal = ({ user, onClose, showToast }) => {
   const [cookie, setCookie] = useState('');
   const [hasCookie, setHasCookie] = useState(false);
   const [isSavingCookie, setIsSavingCookie] = useState(false);
+
+  // Preferensi states
+  const [themePreference, setThemePreference] = useState('system');
+  const [showDisplayNames, setShowDisplayNames] = useState(true);
+  const [liveNotifications, setLiveNotifications] = useState(true);
+  const [soundEffectsEnabled, setSoundEffectsEnabled] = useState(false);
 
   // Ganti Password states
   const [currentPassword, setCurrentPassword] = useState('');
@@ -67,6 +73,10 @@ const SettingsModal = ({ user, onClose, showToast }) => {
         setIsStealth(data.is_stealth);
         setExempts(data.exempts || []);
         setHasCookie(data.has_cookie || false);
+        setThemePreference(data.theme_preference || 'system');
+        setShowDisplayNames(data.show_display_names !== false);
+        setLiveNotifications(data.live_notifications !== false);
+        setSoundEffectsEnabled(data.sound_effects_enabled || false);
       } catch (err) {
         console.error(err);
       } finally {
@@ -85,8 +95,8 @@ const SettingsModal = ({ user, onClose, showToast }) => {
         body: JSON.stringify({ is_stealth: !isStealth })
       });
 
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || 'Gagal memperbarui pengaturan');
       }
       
@@ -96,10 +106,44 @@ const SettingsModal = ({ user, onClose, showToast }) => {
       // Update local storage agar header ikut sinkron (opsional)
       const updatedUser = { ...user, is_stealth: !isStealth };
       localStorage.setItem('user', JSON.stringify(updatedUser));
+      if (onUserUpdate) {
+        onUserUpdate(updatedUser);
+      }
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const updatePreference = async (key, value) => {
+    try {
+      const res = await fetchWithAuth('/api/user/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: value })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Gagal menyimpan preferensi');
+      }
+
+      if (key === 'theme_preference') setThemePreference(value);
+      if (key === 'show_display_names') setShowDisplayNames(value);
+      if (key === 'live_notifications') setLiveNotifications(value);
+      if (key === 'sound_effects_enabled') setSoundEffectsEnabled(value);
+
+      // Update parent component state
+      const updatedUser = { ...user, ...data.settings };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      if (onUserUpdate) {
+        onUserUpdate(updatedUser);
+      }
+
+      showToast('Preferensi berhasil diperbarui', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
     }
   };
 
@@ -291,6 +335,124 @@ const SettingsModal = ({ user, onClose, showToast }) => {
               )}
             </>
           )}
+
+          {/* Preferensi Tampilan & Notifikasi */}
+          <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+            <h4 style={{ color: '#fff', marginBottom: '1rem', fontSize: '1rem' }}>Preferensi Tampilan & Notifikasi</h4>
+            
+            {/* Tema Dropdown */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '0.9rem', color: '#fff', fontWeight: '500' }}>Tema Aplikasi</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Pilih gaya visual dashboard Anda.</div>
+              </div>
+              <select
+                value={themePreference}
+                onChange={e => updatePreference('theme_preference', e.target.value)}
+                style={{ padding: '0.4rem 0.8rem', borderRadius: '0.375rem', border: '1px solid var(--border)', background: 'var(--bg-card-solid)', color: '#fff', fontSize: '0.85rem' }}
+              >
+                <option value="system">🖥️ System Default</option>
+                <option value="light">☀️ Light Mode</option>
+                <option value="dark">🌙 Dark Mode</option>
+              </select>
+            </div>
+
+            {/* Prioritas Display Name Toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '0.9rem', color: '#fff', fontWeight: '500' }}>Tampilkan Display Name</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Gunakan Display Name Roblox jika tersedia.</div>
+              </div>
+              <button
+                onClick={() => updatePreference('show_display_names', !showDisplayNames)}
+                style={{
+                  width: '40px',
+                  height: '22px',
+                  borderRadius: '11px',
+                  background: showDisplayNames ? '#3b82f6' : '#334155',
+                  border: 'none',
+                  position: 'relative',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <div style={{
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  background: '#fff',
+                  position: 'absolute',
+                  top: '3px',
+                  left: showDisplayNames ? '21px' : '3px',
+                  transition: 'all 0.2s'
+                }} />
+              </button>
+            </div>
+
+            {/* Notifikasi Realtime Toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '0.9rem', color: '#fff', fontWeight: '500' }}>Notifikasi Realtime</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Tampilkan pop-up pemberitahuan saat status teman berubah.</div>
+              </div>
+              <button
+                onClick={() => updatePreference('live_notifications', !liveNotifications)}
+                style={{
+                  width: '40px',
+                  height: '22px',
+                  borderRadius: '11px',
+                  background: liveNotifications ? '#3b82f6' : '#334155',
+                  border: 'none',
+                  position: 'relative',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <div style={{
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  background: '#fff',
+                  position: 'absolute',
+                  top: '3px',
+                  left: liveNotifications ? '21px' : '3px',
+                  transition: 'all 0.2s'
+                }} />
+              </button>
+            </div>
+
+            {/* Suara Notifikasi Toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '0.9rem', color: '#fff', fontWeight: '500' }}>Efek Suara Notifikasi</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Putar suara penanda saat ada teman yang online.</div>
+              </div>
+              <button
+                onClick={() => updatePreference('sound_effects_enabled', !soundEffectsEnabled)}
+                style={{
+                  width: '40px',
+                  height: '22px',
+                  borderRadius: '11px',
+                  background: soundEffectsEnabled ? '#3b82f6' : '#334155',
+                  border: 'none',
+                  position: 'relative',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <div style={{
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  background: '#fff',
+                  position: 'absolute',
+                  top: '3px',
+                  left: soundEffectsEnabled ? '21px' : '3px',
+                  transition: 'all 0.2s'
+                }} />
+              </button>
+            </div>
+          </div>
 
           {/* Cookie Roblox Section */}
           <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
