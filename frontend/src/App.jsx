@@ -331,7 +331,7 @@ function App() {
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const res = await fetch('/api/config');
+        const res = await fetch(`${API_URL}/api/config`);
         if (res.ok) {
           const data = await res.json();
           if (data.app_name) {
