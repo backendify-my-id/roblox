@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { fetchWithAuth } from '../utils/api';
+import { fetchWithAuth, trackFeatureUsage } from '../utils/api';
 import NetworkGraph3D from './NetworkGraph3D';
 
 const getRoleBadgeStyle = (roleName) => {
@@ -48,7 +48,7 @@ const getRoleDisplayName = (roleName) => {
 };
 
 // ─── User Detail Modal ────────────────────────────────────────────────────────
-const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
+const UserDetailModal = ({ selectedUser, onClose, showToast, onUserDeleted }) => {
   const [activeTab, setActiveTab] = useState('activity');
   const [activityLogs, setActivityLogs] = useState([]);
   const [profileLogs, setProfileLogs] = useState([]);
@@ -328,7 +328,53 @@ const UserDetailModal = ({ selectedUser, onClose, showToast }) => {
               <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.85rem' }}>@{selectedUser.roblox_username} · ID: <a href={`https://www.roblox.com/users/${selectedUser.roblox_user_id}/profile`} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'none', transition: 'color 0.2s' }} onMouseOver={e => e.currentTarget.style.textDecoration = 'underline'} onMouseOut={e => e.currentTarget.style.textDecoration = 'none'}>{selectedUser.roblox_user_id}</a></p>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer' }}>&times;</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {selectedUser.is_registered && selectedUser.role_name !== 'admin' && (
+              <button
+                onClick={async () => {
+                  if (await window.customConfirm(`Apakah Anda yakin ingin menghapus akun @${selectedUser.roblox_username}? Akun ini akan didegradasi menjadi profil terlacak biasa (tidak ada role dan tidak dapat login lagi).`)) {
+                    try {
+                      const res = await fetchWithAuth(`/api/admin/users/${selectedUser.id}`, {
+                        method: 'DELETE'
+                      });
+                      if (!res.ok) {
+                        const errData = await res.json();
+                        throw new Error(errData.error || 'Gagal menghapus pengguna');
+                      }
+                      if (showToast) showToast('Akun pengguna berhasil dihapus (didegradasi)', 'success');
+                      if (onUserDeleted) onUserDeleted();
+                      onClose();
+                    } catch (err) {
+                      if (showToast) showToast(err.message, 'error');
+                    }
+                  }
+                }}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  color: '#f87171',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: '0.35rem',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  transition: 'all 0.2s',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem'
+                }}
+                onMouseOver={e => {
+                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)';
+                }}
+                onMouseOut={e => {
+                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
+                }}
+              >
+                🗑️ Hapus Akun
+              </button>
+            )}
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer' }}>&times;</button>
+          </div>
         </div>
 
         <div style={{ background: 'rgba(255,255,255,0.05)', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1.25rem', flexShrink: 0 }}>
@@ -1009,6 +1055,21 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
 
   useEffect(() => {
     localStorage.setItem('adminActiveView', activeView);
+    
+    // Telemetry: Track specific Admin sub-tab changes
+    const adminViews = {
+      analytics: 'Admin: Ringkasan Analitis 📊',
+      users: 'Admin: Daftar Pengguna 👥',
+      'network-graph': 'Admin: Visualisasi 3D Jaringan 🌐',
+      'co-players': 'Admin: Mabar Co-Players 👥',
+      shadow: 'Admin: Deteksi Siluman (Shadow) 👁️',
+      cron: 'Admin: Pemantauan Cron Job ⚙️',
+      logs: 'Admin: Log Viewer Sistem 🖥️',
+      backups: 'Admin: Backup Database 💾',
+      'roblox-maps': 'Admin: Pengaturan Map Roblox 🗺️'
+    };
+    const name = adminViews[activeView] || `Admin: ${activeView}`;
+    trackFeatureUsage(name, 'view');
   }, [activeView]);
   const [coPlayingGroups, setCoPlayingGroups] = useState([]);
   const [isLoadingCoPlayers, setIsLoadingCoPlayers] = useState(false);
@@ -1196,6 +1257,29 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
     }
   }, [activeView]);
 
+  useEffect(() => {
+    if (activeView !== 'co-players' && activeView !== 'analytics') return;
+    const handleWSMessage = (e) => {
+      const { type } = e.detail;
+      if (type === 'presence_update') {
+        const silentFetch = async () => {
+          try {
+            const res = await fetchWithAuth('/api/admin/playing-together');
+            if (res.ok) {
+              const data = await res.json();
+              setCoPlayingGroups(Array.isArray(data) ? data : []);
+            }
+          } catch (err) {
+            console.error('[WS-Refresh] Failed background refresh for Co-Players:', err);
+          }
+        };
+        silentFetch();
+      }
+    };
+    window.addEventListener('ws-message', handleWSMessage);
+    return () => window.removeEventListener('ws-message', handleWSMessage);
+  }, [activeView]);
+
   const handleBackup = async () => {
     try {
       const response = await fetchWithAuth('/api/admin/backup', {
@@ -1224,7 +1308,7 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    const confirmRestore = window.confirm(
+    const confirmRestore = await window.customConfirm(
       "PERINGATAN KRITIS:\nMemulihkan database akan menghapus seluruh data aktif saat ini (pengguna, teman pelacakan, log aktivitas, review, dll) dan menggantinya dengan isi file backup.\n\nApakah Anda benar-benar yakin ingin melanjutkan?"
     );
     if (!confirmRestore) {
@@ -2060,8 +2144,27 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
                                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#334155' }} />
                                 )}
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>
+                                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.25rem' }}>
                                     {p.roblox_display_name || p.roblox_username}
+                                    {p.friends_with && p.friends_with.length > 0 && (
+                                      <span
+                                        title={`Berteman dengan di website: ${p.friends_with.join(', ')}`}
+                                        style={{
+                                          fontSize: '0.65rem',
+                                          background: 'rgba(34, 197, 94, 0.25)',
+                                          color: '#4ade80',
+                                          padding: '0.05rem 0.35rem',
+                                          borderRadius: '0.25rem',
+                                          border: '1px solid rgba(34, 197, 94, 0.4)',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '0.15rem',
+                                          cursor: 'help'
+                                        }}
+                                      >
+                                        🤝 Teman
+                                      </span>
+                                    )}
                                   </span>
                                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                     @{p.roblox_username}
@@ -2568,7 +2671,14 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
       ) : null}
 
       {selectedUser && (
-        <UserDetailModal selectedUser={selectedUser} onClose={() => setSelectedUser(null)} showToast={showToast} />
+        <UserDetailModal
+          selectedUser={selectedUser}
+          onClose={() => setSelectedUser(null)}
+          showToast={showToast}
+          onUserDeleted={() => {
+            setUsers(prev => prev.filter(usr => usr.id !== selectedUser.id));
+          }}
+        />
       )}
     </div>
   );
@@ -2577,14 +2687,49 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
 // ─── System Log Viewer Component ────────────────────────────────────────────────
 const SystemLogViewer = ({ showToast }) => {
   const [logFiles, setLogFiles] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('cron');
+  const [selectedDate, setSelectedDate] = useState('');
   const [selectedFile, setSelectedFile] = useState('');
   const [logContent, setLogContent] = useState('');
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [levelFilter, setLevelFilter] = useState('ALL');
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const terminalEndRef = React.useRef(null);
+
+  const CATEGORIES = [
+    { value: 'cron', label: 'Cron Jobs ⏰' },
+    { value: 'database', label: 'Database (GORM) 🗄️' },
+    { value: 'http', label: 'HTTP / API Access 🌐' },
+    { value: 'startup', label: 'Startup & System 🚀' },
+    { value: 'websocket', label: 'WebSocket Live 🔌' }
+  ];
+
+  const getDatesForCategory = (category, files) => {
+    return files
+      .filter(file => file.startsWith(category + '/'))
+      .map(file => file.split('/')[1]?.replace('.log', ''))
+      .filter(Boolean);
+  };
+
+  const handleCategoryChange = (newCat) => {
+    setSelectedCategory(newCat);
+    const dates = getDatesForCategory(newCat, logFiles);
+    if (dates.length > 0) {
+      setSelectedDate(dates[0]);
+      setSelectedFile(`${newCat}/${dates[0]}.log`);
+    } else {
+      setSelectedDate('');
+      setSelectedFile('');
+      setLogContent('');
+    }
+  };
+
+  const handleDateChange = (newDate) => {
+    setSelectedDate(newDate);
+    setSelectedFile(`${selectedCategory}/${newDate}.log`);
+  };
 
   const fetchLogFiles = async () => {
     setIsLoadingFiles(true);
@@ -2593,8 +2738,21 @@ const SystemLogViewer = ({ showToast }) => {
       if (!res.ok) throw new Error('Gagal memuat daftar file log');
       const data = await res.json();
       setLogFiles(Array.isArray(data) ? data : []);
-      if (data.length > 0 && !selectedFile) {
-        setSelectedFile(data[0]); // Select today's log by default
+      
+      if (data.length > 0) {
+        const cronDates = getDatesForCategory('cron', data);
+        if (cronDates.length > 0) {
+          setSelectedCategory('cron');
+          setSelectedDate(cronDates[0]);
+          setSelectedFile(`cron/${cronDates[0]}.log`);
+        } else {
+          const parts = data[0].split('/');
+          const cat = parts[0];
+          const date = parts[1]?.replace('.log', '');
+          setSelectedCategory(cat);
+          setSelectedDate(date);
+          setSelectedFile(data[0]);
+        }
       }
     } catch (err) {
       showToast(err.message, 'error');
@@ -2628,12 +2786,31 @@ const SystemLogViewer = ({ showToast }) => {
 
   // Auto-refresh hook
   useEffect(() => {
-    if (!autoRefresh || !selectedFile) return;
-    const interval = setInterval(() => {
-      fetchLogContent(selectedFile);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [autoRefresh, selectedFile]);
+    if (!autoRefresh) return;
+    const handleWSMessage = (e) => {
+      const { type, payload } = e.detail;
+      if (type === 'log_stream') {
+        const { category, message } = payload;
+        if (category === selectedCategory) {
+          const today = (() => {
+            const d = new Date();
+            const offset = d.getTimezoneOffset();
+            const local = new Date(d.getTime() - (offset * 60 * 1000));
+            return local.toISOString().substring(0, 10);
+          })();
+          if (selectedDate === today) {
+            setLogContent(prev => prev + message);
+          }
+        }
+      }
+    };
+    window.addEventListener('ws-message', handleWSMessage);
+    return () => window.removeEventListener('ws-message', handleWSMessage);
+  }, [autoRefresh, selectedCategory, selectedDate]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [logContent]);
 
   // Filter logs line by line
   const filteredLines = logContent
@@ -2670,27 +2847,41 @@ const SystemLogViewer = ({ showToast }) => {
               onChange={(e) => setAutoRefresh(e.target.checked)}
               style={{ cursor: 'pointer' }}
             />
-            Auto-Refresh (5s)
+            Live Stream (WS) ⚡
           </label>
         </div>
       </div>
 
       {/* Select Box and Filter bar */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
         <div>
-          <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Pilih File Log:</label>
+          <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Pilih Kategori:</label>
           <select
-            value={selectedFile}
-            onChange={(e) => setSelectedFile(e.target.value)}
+            value={selectedCategory}
+            onChange={(e) => handleCategoryChange(e.target.value)}
             style={{ width: '100%', padding: '0.5rem', borderRadius: '0.5rem', background: '#1e293b', border: '1px solid var(--border)', color: '#fff', fontSize: '0.85rem' }}
           >
+            {CATEGORIES.map(cat => (
+              <option key={cat.value} value={cat.value}>{cat.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Pilih Tanggal:</label>
+          <select
+            value={selectedDate}
+            onChange={(e) => handleDateChange(e.target.value)}
+            style={{ width: '100%', padding: '0.5rem', borderRadius: '0.5rem', background: '#1e293b', border: '1px solid var(--border)', color: '#fff', fontSize: '0.85rem' }}
+            disabled={isLoadingFiles || getDatesForCategory(selectedCategory, logFiles).length === 0}
+          >
             {isLoadingFiles ? (
-              <option>Memuat file...</option>
-            ) : logFiles.length === 0 ? (
-              <option>Tidak ada file log ditemukan</option>
+              <option>Memuat tanggal...</option>
+            ) : getDatesForCategory(selectedCategory, logFiles).length === 0 ? (
+              <option>Tidak ada tanggal ditemukan</option>
             ) : (
-              logFiles.map(file => (
-                <option key={file} value={file}>{file}</option>
+              getDatesForCategory(selectedCategory, logFiles).map(date => (
+                <option key={date} value={date}>{date}</option>
               ))
             )}
           </select>
@@ -2810,8 +3001,76 @@ const CronJobMonitor = ({ showToast }) => {
 
   useEffect(() => {
     if (!autoRefresh) return;
-    const interval = setInterval(fetchStatus, 5000); // refresh every 5s
-    return () => clearInterval(interval);
+
+    const handleWSMessage = (e) => {
+      const { type, payload } = e.detail;
+      console.log('[CronMonitor WS] message received:', type, payload);
+      if (type === 'cron_progress') {
+        const {
+          remaining_hits,
+          max_hits,
+          job_name,
+          instance_id,
+          status,
+          start_time,
+          last_run,
+          duration_ms,
+          processed_count,
+          failed_count,
+          change_count
+        } = payload;
+
+        setData(prev => {
+          if (!prev) return prev;
+
+          // Update remaining hits
+          const newRemaining = remaining_hits ?? prev.remaining_hits;
+          const newMax = max_hits ?? prev.max_hits;
+
+          // Update specifically the job that broadcasted
+          const updatedJobs = prev.jobs.map(job => {
+            if (job.job_name === job_name && job.instance_id === instance_id) {
+              return {
+                ...job,
+                status,
+                start_time,
+                last_run,
+                duration_ms,
+                processed_count,
+                failed_count,
+                change_count
+              };
+            }
+            return job;
+          });
+
+          const exists = prev.jobs.some(job => job.job_name === job_name && job.instance_id === instance_id);
+          if (!exists && job_name) {
+            updatedJobs.push({
+              job_name,
+              instance_id,
+              status,
+              start_time,
+              last_run,
+              duration_ms,
+              processed_count,
+              failed_count,
+              change_count
+            });
+          }
+
+          return {
+            ...prev,
+            remaining_hits: newRemaining,
+            max_hits: newMax,
+            jobs: updatedJobs
+          };
+        });
+      }
+    };
+
+    window.addEventListener('ws-message', handleWSMessage);
+    return () => window.removeEventListener('ws-message', handleWSMessage);
   }, [autoRefresh]);
 
   if (isLoading && !data) {
@@ -2899,7 +3158,7 @@ const CronJobMonitor = ({ showToast }) => {
             style={{ width: '16px', height: '16px', cursor: 'pointer' }}
           />
           <label htmlFor="auto-refresh-cron" style={{ fontSize: '0.85rem', color: '#fff', cursor: 'pointer', userSelect: 'none' }}>
-            🔄 Refresh Otomatis (Setiap 5 detik)
+            Live Stream (WS) ⚡
           </label>
         </div>
         <button
@@ -3076,7 +3335,7 @@ const DatabaseBackupRestore = ({ showToast, handleBackup, handleRestore, isResto
   };
 
   const handleDeleteFile = async (filename) => {
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus file backup "${filename}"?`)) return;
+    if (!await window.customConfirm(`Apakah Anda yakin ingin menghapus file backup "${filename}"?`)) return;
     try {
       const res = await fetchWithAuth(`/api/admin/backups/delete/${filename}`, {
         method: 'DELETE'
@@ -3090,7 +3349,7 @@ const DatabaseBackupRestore = ({ showToast, handleBackup, handleRestore, isResto
   };
 
   const handleRestoreFromArchive = async (filename) => {
-    const confirmRestore = window.confirm(
+    const confirmRestore = await window.customConfirm(
       `PERINGATAN KRITIS:\nMemulihkan database dari arsip "${filename}" akan menghapus seluruh data aktif saat ini.\n\nApakah Anda yakin ingin melanjutkan?`
     );
     if (!confirmRestore) return;
@@ -3411,7 +3670,7 @@ const DatabaseMapsList = ({ showToast }) => {
   // Sync Names state & function
   const [isSyncingNames, setIsSyncingNames] = useState(false);
   const handleSyncMapNames = async () => {
-    if (!window.confirm('Apakah Anda yakin ingin menyinkronkan seluruh nama map di database ke nama bahasa Inggris resmi? Tindakan ini akan memakan waktu beberapa detik karena memanggil Roblox API secara batch.')) {
+    if (!await window.customConfirm('Apakah Anda yakin ingin menyinkronkan seluruh nama map di database ke nama bahasa Inggris resmi? Tindakan ini akan memakan waktu beberapa detik karena memanggil Roblox API secara batch.')) {
       return;
     }
     setIsSyncingNames(true);
@@ -3495,7 +3754,7 @@ const DatabaseMapsList = ({ showToast }) => {
   }, [page, totalPages, isLoading, isFetchingMore]);
 
   const handleDeleteMap = async (id, name) => {
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus map "${name}" dari database? Tindakan ini akan mengembalikan status pemetaan Co-Player ke string mentah.`)) {
+    if (!await window.customConfirm(`Apakah Anda yakin ingin menghapus map "${name}" dari database? Tindakan ini akan mengembalikan status pemetaan Co-Player ke string mentah.`)) {
       return;
     }
     try {

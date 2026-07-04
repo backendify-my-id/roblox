@@ -50,6 +50,50 @@ func updateCronMetadata(jobName string, instanceID int, status string, start tim
 
 	rdb.HSet(ctx, key, vals)
 	rdb.Expire(ctx, key, 7*24*time.Hour) // Simpan selama 7 hari
+
+	// Broadcast update over WebSocket to admins
+	if services.Hub != nil {
+		procCount, _ := vals["processed_count"].(int)
+		if procCount == 0 {
+			if pcStr, ok := vals["processed_count"].(string); ok {
+				procCount, _ = strconv.Atoi(pcStr)
+			}
+		}
+		failCount, _ := vals["failed_count"].(int)
+		if failCount == 0 {
+			if fcStr, ok := vals["failed_count"].(string); ok {
+				failCount, _ = strconv.Atoi(fcStr)
+			}
+		}
+		chgCount, _ := vals["change_count"].(int)
+		if chgCount == 0 {
+			if ccStr, ok := vals["change_count"].(string); ok {
+				chgCount, _ = strconv.Atoi(ccStr)
+			}
+		}
+
+		var durMs int64
+		if dm, ok := vals["duration_ms"].(int64); ok {
+			durMs = dm
+		}
+
+		services.Hub.Broadcast(services.WSMessage{
+			Type: "cron_progress",
+			Payload: map[string]interface{}{
+				"remaining_hits":  services.GetRemainingHits(),
+				"max_hits":        80,
+				"job_name":        jobName,
+				"instance_id":     instanceID,
+				"status":          status,
+				"start_time":      vals["start_time"],
+				"last_run":        vals["last_run"],
+				"duration_ms":     durMs,
+				"processed_count": procCount,
+				"failed_count":    failCount,
+				"change_count":    chgCount,
+			},
+		})
+	}
 }
 
 func StartJobs() {
@@ -400,7 +444,7 @@ func syncAllPresences() {
 				oldGame := u.CurrentGameName
 
 				u.CurrentPresence = statusStr
-				u.CurrentGameName = p.LastLocation
+				resolvedGameName := p.LastLocation
 				if statusStr == "Offline" {
 					u.CurrentUniverseID = nil
 					u.CurrentPlaceID = nil
@@ -408,8 +452,6 @@ func syncAllPresences() {
 					u.CurrentUniverseID = p.UniverseId
 					u.CurrentPlaceID = p.PlaceId
 				}
-				u.UpdatedAt = time.Now()
-				database.DB.Model(&u).Select("current_presence", "current_game_name", "current_universe_id", "current_place_id", "updated_at").Updates(&u)
 
 				var mapID *uint
 
@@ -435,7 +477,7 @@ func syncAllPresences() {
 										existingMap.PlaceID = &gRootPlaceID
 										hasChanges = true
 									}
-									if gName != "" && existingMap.Name != gName {
+									if existingMap.Name == "" && gName != "" {
 										existingMap.Name = gName
 										hasChanges = true
 									}
@@ -449,6 +491,9 @@ func syncAllPresences() {
 								database.DB.Save(&existingMap)
 							}
 							mapID = &existingMap.ID
+							if existingMap.Name != "" {
+								resolvedGameName = existingMap.Name
+							}
 						} else {
 							// Does not exist by UniverseID. Check if there is an existing manual entry with the same name and NO UniverseID
 							var nameMap models.RobloxMap
@@ -462,8 +507,7 @@ func syncAllPresences() {
 									if resolvedPlaceID == nil || *resolvedPlaceID == 0 {
 										resolvedPlaceID = &gRootPlaceID
 									}
-									if gName != "" {
-										p.LastLocation = gName
+									if nameMap.Name == "" && gName != "" {
 										nameMap.Name = gName
 									}
 									nameMap.Description = gDesc
@@ -478,18 +522,22 @@ func syncAllPresences() {
 								database.DB.Save(&nameMap)
 								LogCron("INFO", "[AutoMap] Linked UniverseID %d and PlaceID %d to manual map: '%s'", *p.UniverseId, *resolvedPlaceID, p.LastLocation)
 								mapID = &nameMap.ID
+								if nameMap.Name != "" {
+									resolvedGameName = nameMap.Name
+								}
 							} else {
 								// Brand new map! Fetch details first
 								gName, gDesc, gRootPlaceID, err := services.GetUniverseDetails(*p.UniverseId)
 								urlPath := ""
 								var resolvedPlaceID *uint64 = p.PlaceId
+								mapName := p.LastLocation
 								if err == nil {
 									urlPath = fmt.Sprintf("/games/%d/redirect", gRootPlaceID)
 									if resolvedPlaceID == nil || *resolvedPlaceID == 0 {
 										resolvedPlaceID = &gRootPlaceID
 									}
-									if gName != "" {
-										p.LastLocation = gName
+									if mapName == "" && gName != "" {
+										mapName = gName
 									}
 									LogCron("INFO", "[AutoMap] [New Details] Fetched info for brand new UniverseID %d. Name: '%s', PlaceID: %d", *p.UniverseId, gName, gRootPlaceID)
 								} else {
@@ -497,7 +545,7 @@ func syncAllPresences() {
 								}
 
 								newMap := models.RobloxMap{
-									Name:        p.LastLocation,
+									Name:        mapName,
 									UniverseID:  p.UniverseId,
 									PlaceID:     resolvedPlaceID,
 									Description: gDesc,
@@ -506,8 +554,11 @@ func syncAllPresences() {
 									UpdatedAt:   time.Now(),
 								}
 								if err := database.DB.Create(&newMap).Error; err == nil {
-									LogCron("INFO", "[AutoMap] Successfully created brand new RobloxMap with UniverseID %d: '%s'", *p.UniverseId, p.LastLocation)
+									LogCron("INFO", "[AutoMap] Successfully created brand new RobloxMap with UniverseID %d: '%s'", *p.UniverseId, mapName)
 									mapID = &newMap.ID
+									if newMap.Name != "" {
+										resolvedGameName = newMap.Name
+									}
 								} else {
 									LogCron("ERROR", "[AutoMap] Failed to write new RobloxMap with UniverseID %d to DB: %v", *p.UniverseId, err)
 								}
@@ -518,6 +569,9 @@ func syncAllPresences() {
 						var existingMap models.RobloxMap
 						if err := database.DB.Where("name = ?", p.LastLocation).First(&existingMap).Error; err == nil {
 							mapID = &existingMap.ID
+							if existingMap.Name != "" {
+								resolvedGameName = existingMap.Name
+							}
 						} else {
 							newMap := models.RobloxMap{
 								Name:      p.LastLocation,
@@ -527,24 +581,31 @@ func syncAllPresences() {
 							if err := database.DB.Create(&newMap).Error; err == nil {
 								LogCron("INFO", "[AutoMap] Fallback name-only map added to DB: '%s'", p.LastLocation)
 								mapID = &newMap.ID
+								if newMap.Name != "" {
+									resolvedGameName = newMap.Name
+								}
 							}
 						}
 					}
 				}
+
+				u.CurrentGameName = resolvedGameName
+				u.UpdatedAt = time.Now()
+				database.DB.Model(&u).Select("current_presence", "current_game_name", "current_universe_id", "current_place_id", "updated_at").Updates(&u)
 
 				_, isStealth := stealthMap[u.RobloxUserID]
 
 				newLog := models.ActivityLog{
 					UserID:    u.ID,
 					Status:    statusStr,
-					GameName:  p.LastLocation,
+					GameName:  resolvedGameName,
 					MapID:     mapID,
 					IsStealth: isStealth,
 				}
 				database.DB.Create(&newLog)
 
 				LogCron("INFO", "[PresenceSync] [Change Detected] User '%s' (RobloxUserID: %d) status changed from '%s' (%s) to '%s' (%s). Logged new activity record (Stealth: %t).",
-					u.RobloxUsername, rID, oldPresence, oldGame, statusStr, p.LastLocation, isStealth)
+					u.RobloxUsername, rID, oldPresence, oldGame, statusStr, resolvedGameName, isStealth)
 				changeCount++
 
 				services.Hub.Broadcast(services.WSMessage{

@@ -80,6 +80,19 @@ func waitForRateLimit() {
 		}
 
 		if count <= 80 {
+			if Hub != nil {
+				remaining := 80 - int(count)
+				if remaining < 0 {
+					remaining = 0
+				}
+				go Hub.Broadcast(WSMessage{
+					Type: "cron_progress",
+					Payload: map[string]interface{}{
+						"remaining_hits": remaining,
+						"max_hits":       80,
+					},
+				})
+			}
 			break
 		}
 

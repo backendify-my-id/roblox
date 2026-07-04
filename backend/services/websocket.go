@@ -3,13 +3,14 @@ package services
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/apany/roblox-friend-tracker/cache"
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
+	"github.com/apany/roblox-friend-tracker/utils"
 	"github.com/gofiber/websocket/v2"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -18,6 +19,7 @@ type WSClient struct {
 	Conn     *websocket.Conn
 	UserID   uint
 	Username string
+	Role     string
 	mu       sync.Mutex // Guard against concurrent websocket writes
 }
 
@@ -36,7 +38,7 @@ type WSHub struct {
 }
 
 type WSMessage struct {
-	Type    string      `json:"type"`    // "presence_update", "profile_update", "friend_sync_complete"
+	Type    string      `json:"type"`    // "presence_update", "profile_update", "friend_sync_complete", "log_stream", "cron_progress"
 	UserID  uint        `json:"user_id"` // Target Roblox user ID in database
 	Payload interface{} `json:"payload"`
 }
@@ -51,29 +53,44 @@ func InitWSHub() {
 		broadcast:  make(chan WSMessage),
 	}
 	go Hub.run()
+
+	// Connect the global log broadcasting hook
+	utils.LogBroadcastHook = func(category string, message string) {
+		Hub.Broadcast(WSMessage{
+			Type: "log_stream",
+			Payload: map[string]string{
+				"category": category,
+				"message":  message,
+			},
+		})
+	}
 }
 
 func (h *WSHub) run() {
-	log.Println("[WS] Hub initialized and running")
+	utils.LogStartup("[WS] Hub initialized and running")
 	for {
 		select {
 		case client := <-h.register:
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
-			log.Printf("[WS] Client registered: User %s (ID %d)", client.Username, client.UserID)
+			utils.LogWebSocket("Client registered: User %s (ID %d, Role %s)", client.Username, client.UserID, client.Role)
 
 		case client := <-h.unregister:
 			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				client.Conn.Close()
-				log.Printf("[WS] Client unregistered: User %s (ID %d)", client.Username, client.UserID)
+				utils.LogWebSocket("Client unregistered: User %s (ID %d)", client.Username, client.UserID)
 			}
 			h.mu.Unlock()
 
 		case message := <-h.broadcast:
-			go h.sendToTrackers(message)
+			if message.Type == "log_stream" || message.Type == "cron_progress" {
+				go h.sendToAdmins(message)
+			} else {
+				go h.sendToTrackers(message)
+			}
 		}
 	}
 }
@@ -97,7 +114,7 @@ func (h *WSHub) sendToTrackers(message WSMessage) {
 		Find(&friends).Error
 
 	if err != nil {
-		log.Printf("[WS] Error fetching trackers for target user %d: %v", message.UserID, err)
+		utils.LogWebSocket("Error fetching trackers for target user %d: %v", message.UserID, err)
 		return
 	}
 
@@ -135,7 +152,7 @@ func (h *WSHub) sendToTrackers(message WSMessage) {
 			"avatar_url":          f.TargetUser.AvatarURL,
 			"status":              f.Status,
 			"current_presence":    presence,
-			"current_game_name":    gameName,
+			"current_game_name":   gameName,
 			"note":                f.Note,
 			"created_at":          f.CreatedAt,
 			"updated_at":          f.UpdatedAt,
@@ -149,7 +166,7 @@ func (h *WSHub) sendToTrackers(message WSMessage) {
 
 		msgBytes, err := json.Marshal(clientMessage)
 		if err != nil {
-			log.Printf("[WS] Error marshaling WS message: %v", err)
+			utils.LogWebSocket("Error marshaling WS message: %v", err)
 			continue
 		}
 
@@ -157,10 +174,32 @@ func (h *WSHub) sendToTrackers(message WSMessage) {
 			if client.UserID == f.UserID {
 				err := client.SafeWrite(websocket.TextMessage, msgBytes)
 				if err != nil {
-					log.Printf("[WS] Error sending message to client ID %d: %v", client.UserID, err)
+					utils.LogWebSocket("Error sending message to client ID %d: %v", client.UserID, err)
 				}
 			}
 		}
+	}
+}
+
+func (h *WSHub) sendToAdmins(message WSMessage) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	msgBytes, err := json.Marshal(message)
+	if err != nil {
+		utils.LogWebSocket("Error marshaling Admin WS message: %v", err)
+		return
+	}
+
+	adminCount := 0
+	for client := range h.clients {
+		if strings.ToLower(client.Role) == "admin" {
+			adminCount++
+			_ = client.SafeWrite(websocket.TextMessage, msgBytes)
+		}
+	}
+	if message.Type != "log_stream" {
+		utils.LogWebSocket("[WS-Admin] Sent message type '%s' to %d admin(s)", message.Type, adminCount)
 	}
 }
 

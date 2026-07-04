@@ -104,7 +104,7 @@ export default function GameEntryDetailPage({ listId, entryId, user, showToast, 
   };
 
   const handleDelete = async (mediaItem) => {
-    if (!confirm('Hapus foto/video ini?')) return;
+    if (!await window.customConfirm('Hapus foto/video ini?')) return;
     try {
       const res = await fetchWithAuth(`/api/lists/${listId}/entries/${entryId}/media/${mediaItem.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();

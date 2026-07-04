@@ -2,52 +2,96 @@ package utils
 
 import (
 	"fmt"
-	"log"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 )
 
+// LogBroadcastHook is an optional global hook invoked whenever any message is written to a DailyFileWriter
+var LogBroadcastHook func(category string, message string)
+
+// DailyFileWriter is an io.Writer that handles automatic date-based log rotation and terminal mirroring
+type DailyFileWriter struct {
+	Category string
+	mu       sync.Mutex
+	file     *os.File
+	lastDate string
+}
+
+func (w *DailyFileWriter) Write(p []byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	today := time.Now().Format("2006-01-02")
+	if w.file == nil || w.lastDate != today {
+		if w.file != nil {
+			w.file.Close()
+		}
+
+		logDir := filepath.Join(".", "uploads", "log", w.Category)
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			return 0, err
+		}
+
+		filePath := filepath.Join(logDir, today+".log")
+		f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			return 0, err
+		}
+		w.file = f
+		w.lastDate = today
+	}
+
+	// Mirror to terminal console
+	os.Stdout.Write(p)
+	n, err = w.file.Write(p)
+
+	if LogBroadcastHook != nil {
+		msgStr := string(p)
+		go LogBroadcastHook(w.Category, msgStr)
+	}
+
+	return n, err
+}
+
 var (
-	logMu sync.Mutex
+	StartupWriter   = &DailyFileWriter{Category: "startup"}
+	CronWriter      = &DailyFileWriter{Category: "cron"}
+	WebSocketWriter = &DailyFileWriter{Category: "websocket"}
 )
+
+// LogStartup writes to console and uploads/log/startup/[date].log
+func LogStartup(format string, v ...interface{}) {
+	msg := fmt.Sprintf(format, v...)
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	formattedMsg := fmt.Sprintf("[%s] [STARTUP] %s\n", timestamp, msg)
+	StartupWriter.Write([]byte(formattedMsg))
+}
 
 // LogCron menulis entri log yang sangat detail ke konsol dan ke file log harian secara aman.
 func LogCron(level string, format string, v ...interface{}) {
 	msg := fmt.Sprintf(format, v...)
-	now := time.Now()
-	timestamp := now.Format("2006-01-02 15:04:05")
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	formattedMsg := fmt.Sprintf("[%s] [%s] %s\n", timestamp, level, msg)
+	CronWriter.Write([]byte(formattedMsg))
+}
 
-	// Tampilkan di konsol terminal
-	fmt.Print(formattedMsg)
+// LogWebSocket menulis entri log websocket ke konsol dan ke file websocket.log secara aman.
+func LogWebSocket(format string, v ...interface{}) {
+	msg := fmt.Sprintf(format, v...)
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	formattedMsg := fmt.Sprintf("[%s] [WS] %s\n", timestamp, msg)
+	WebSocketWriter.Write([]byte(formattedMsg))
+}
 
-	// Kunci akses untuk mencegah race condition pada penulisan file
-	logMu.Lock()
-	defer logMu.Unlock()
+// GetDatabaseLogWriter returns an io.Writer that handles daily database log rotation for GORM
+func GetDatabaseLogWriter() io.Writer {
+	return &DailyFileWriter{Category: "database"}
+}
 
-	// Buat folder logs di dalam workspace jika belum ada
-	// Gunakan path absolut untuk logs agar konsisten terlepas dari di mana program dijalankan
-	logDir := filepath.Join(".", "logs")
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		log.Printf("Failed to create log directory: %v\n", err)
-		return
-	}
-
-	// Buat nama file log harian (format: cron_YYYY-MM-DD.log)
-	fileName := fmt.Sprintf("cron_%s.log", now.Format("2006-01-02"))
-	filePath := filepath.Join(logDir, fileName)
-
-	// Buka file log (buka jika ada, buat jika tidak ada, posisikan cursor di akhir file untuk append)
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		log.Printf("Failed to open cron log file: %v\n", err)
-		return
-	}
-	defer file.Close()
-
-	if _, err := file.WriteString(formattedMsg); err != nil {
-		log.Printf("Failed to write to cron log file: %v\n", err)
-	}
+// GetHTTPLogWriter returns an io.Writer that handles daily access log rotation for Fiber
+func GetHTTPLogWriter() io.Writer {
+	return &DailyFileWriter{Category: "http"}
 }

@@ -367,6 +367,7 @@ func GetPresences(userIds []uint64, robloxCookie string) (map[uint64]PresenceDat
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
 	cookie := robloxCookie
 	if cookie == "" {

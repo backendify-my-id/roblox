@@ -81,9 +81,9 @@ export default defineConfig({
       "http://192.168.1.200",
       "http://103.157.27.152:5173"
     ],
-    hmr: {
+    hmr: process.env.VITE_HMR_SECURE === 'true' ? {
       clientPort: 443,
       protocol: 'wss'
-    }
+    } : true
   },
 })

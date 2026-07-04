@@ -508,12 +508,13 @@ func GetPlayingTogether(c *fiber.Ctx) error {
 	database.DB.Find(&allMaps)
 
 	type PlayerInfo struct {
-		ID                uint   `json:"id"`
-		RobloxUserID      string `json:"roblox_user_id"`
-		RobloxUsername    string `json:"roblox_username"`
-		RobloxDisplayName string `json:"roblox_display_name"`
-		AvatarURL         string `json:"avatar_url"`
-		RoleName          string `json:"role_name"`
+		ID                uint     `json:"id"`
+		RobloxUserID      string   `json:"roblox_user_id"`
+		RobloxUsername    string   `json:"roblox_username"`
+		RobloxDisplayName string   `json:"roblox_display_name"`
+		AvatarURL         string   `json:"avatar_url"`
+		RoleName          string   `json:"role_name"`
+		FriendsWith       []string `json:"friends_with"`
 	}
 
 	type GameGroup struct {
@@ -539,23 +540,33 @@ func GetPlayingTogether(c *fiber.Ctx) error {
 			RobloxDisplayName: u.RobloxDisplayName,
 			AvatarURL:         u.AvatarURL,
 			RoleName:          roleName,
+			FriendsWith:       make([]string, 0),
 		}
 
 		// Find matching map from DB (Roblox Map Database)
 		var matchedMap *models.RobloxMap
-		for i := range allMaps {
-			m := &allMaps[i]
-			// Direct ID match
-			if u.CurrentUniverseID != nil && m.UniverseID != nil && *u.CurrentUniverseID == *m.UniverseID {
-				matchedMap = m
-				break
+		
+		// 1. Try direct ID match first
+		if u.CurrentUniverseID != nil && *u.CurrentUniverseID > 0 {
+			for i := range allMaps {
+				m := &allMaps[i]
+				if m.UniverseID != nil && *u.CurrentUniverseID == *m.UniverseID {
+					matchedMap = m
+					break
+				}
 			}
-			// String match (case-insensitive substring)
-			mName := strings.ToLower(m.Name)
-			gName := strings.ToLower(u.CurrentGameName)
-			if len(mName) >= 3 && (strings.Contains(gName, mName) || strings.Contains(mName, gName)) {
-				matchedMap = m
-				break
+		}
+
+		// 2. Try string match (case-insensitive substring) only if no direct ID match was found
+		if matchedMap == nil {
+			for i := range allMaps {
+				m := &allMaps[i]
+				mName := strings.ToLower(m.Name)
+				gName := strings.ToLower(u.CurrentGameName)
+				if len(mName) >= 3 && (strings.Contains(gName, mName) || strings.Contains(mName, gName)) {
+					matchedMap = m
+					break
+				}
 			}
 		}
 
@@ -596,6 +607,60 @@ func GetPlayingTogether(c *fiber.Ctx) error {
 
 	res := make([]GameGroup, 0)
 	for gameName, players := range resMap {
+		// Collect all database User IDs of players in this game group
+		playerIDs := make([]uint, len(players))
+		playerMap := make(map[uint]*PlayerInfo)
+		for i := range players {
+			playerIDs[i] = players[i].ID
+			playerMap[players[i].ID] = &players[i]
+		}
+
+		// Find active friendships between these players in this group
+		if len(playerIDs) > 1 {
+			var friendships []models.Friend
+			database.DB.Where("status = 'active' AND user_id IN ? AND friend_id IN ?", playerIDs, playerIDs).
+				Find(&friendships)
+
+			for _, f := range friendships {
+				// f.UserID is friends with f.FriendID
+				p1 := playerMap[f.UserID]
+				p2 := playerMap[f.FriendID]
+				if p1 != nil && p2 != nil {
+					p1Name := p1.RobloxDisplayName
+					if p1Name == "" {
+						p1Name = p1.RobloxUsername
+					}
+					p2Name := p2.RobloxDisplayName
+					if p2Name == "" {
+						p2Name = p2.RobloxUsername
+					}
+
+					// Append to FriendsWith (avoid duplicates)
+					alreadyAdded1 := false
+					for _, name := range p1.FriendsWith {
+						if name == p2Name {
+							alreadyAdded1 = true
+							break
+						}
+					}
+					if !alreadyAdded1 {
+						p1.FriendsWith = append(p1.FriendsWith, p2Name)
+					}
+
+					alreadyAdded2 := false
+					for _, name := range p2.FriendsWith {
+						if name == p1Name {
+							alreadyAdded2 = true
+							break
+						}
+					}
+					if !alreadyAdded2 {
+						p2.FriendsWith = append(p2.FriendsWith, p1Name)
+					}
+				}
+			}
+		}
+
 		res = append(res, GameGroup{
 			GameName: gameName,
 			Players:  players,
@@ -915,21 +980,57 @@ func UpdateUserRole(c *fiber.Ctx) error {
 	})
 }
 
-// GetCronLogFiles lists all available daily cron log files, sorted descending.
-func GetCronLogFiles(c *fiber.Ctx) error {
-	logDir := filepath.Join(".", "logs")
-	files, err := os.ReadDir(logDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return c.JSON([]string{})
+// DeleteUser degrades a registered user back to a standard synced friend profile (removes credentials, role, approval)
+func DeleteUser(c *fiber.Ctx) error {
+	userId := c.Params("id")
+
+	// Lockout prevention: Admin cannot delete their own account
+	currentUserID, err := getUserID(c)
+	if err == nil {
+		targetUserIDVal, parseErr := strconv.ParseUint(userId, 10, 64)
+		if parseErr == nil && uint(targetUserIDVal) == currentUserID {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Anda tidak diperbolehkan menghapus akun Anda sendiri untuk mencegah lockout"})
 		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to read logs directory: " + err.Error()})
 	}
 
+	var user models.User
+	if err := database.DB.First(&user, userId).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User tidak ditemukan"})
+	}
+
+	// We downgrade/degrade the registered user to a synced profile (no role, no password, no cookie)
+	updates := map[string]interface{}{
+		"role_id":       nil,
+		"password_hash": "",
+		"roblox_cookie": "",
+		"is_approved":   false,
+		"is_stealth":    false,
+	}
+
+	// Use map updates to force GORM to set NULL and empty strings
+	if err := database.DB.Model(&user).Updates(updates).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal menghapus akun pengguna: " + err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "Akun pengguna berhasil dihapus (didegradasi menjadi profil terlacak)"})
+}
+
+// GetCronLogFiles lists all available daily cron log files, sorted descending.
+func GetCronLogFiles(c *fiber.Ctx) error {
+	logDir := filepath.Join(".", "uploads", "log")
+	categories := []string{"startup", "http", "database", "cron", "websocket"}
+
 	var logFiles []string
-	for _, f := range files {
-		if !f.IsDir() && strings.HasPrefix(f.Name(), "cron_") && strings.HasSuffix(f.Name(), ".log") {
-			logFiles = append(logFiles, f.Name())
+	for _, cat := range categories {
+		catDir := filepath.Join(logDir, cat)
+		files, err := os.ReadDir(catDir)
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			if !f.IsDir() && strings.HasSuffix(f.Name(), ".log") {
+				logFiles = append(logFiles, fmt.Sprintf("%s/%s", cat, f.Name()))
+			}
 		}
 	}
 
@@ -942,14 +1043,14 @@ func GetCronLogFiles(c *fiber.Ctx) error {
 
 // GetCronLogContent returns the raw content of a specified log file.
 func GetCronLogContent(c *fiber.Ctx) error {
-	fileName := c.Params("filename")
+	filePathParam := c.Params("*")
 
 	// Validate filename to prevent path traversal
-	if strings.Contains(fileName, "..") || strings.Contains(fileName, "/") || strings.Contains(fileName, "\\") {
+	if strings.Contains(filePathParam, "..") || strings.Contains(filePathParam, "\\") {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid log filename"})
 	}
 
-	filePath := filepath.Join(".", "logs", fileName)
+	filePath := filepath.Join(".", "uploads", "log", filePathParam)
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Log file not found or could not be read: " + err.Error()})

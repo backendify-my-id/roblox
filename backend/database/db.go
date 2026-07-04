@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/apany/roblox-friend-tracker/models"
+	"github.com/apany/roblox-friend-tracker/utils"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -58,7 +59,7 @@ func ConnectDB() {
 		var count int64
 		defaultDB.Raw("SELECT count(*) FROM pg_database WHERE datname = ?", dbname).Scan(&count)
 		if count == 0 {
-			log.Printf("Database %s does not exist, creating...", dbname)
+			utils.LogStartup("Database %s does not exist, creating...", dbname)
 			defaultDB.Exec(fmt.Sprintf("CREATE DATABASE %s", dbname))
 		}
 
@@ -67,14 +68,25 @@ func ConnectDB() {
 			sqlDefaultDB.Close()
 		}
 	} else {
-		log.Printf("Warning: failed to connect to default postgres db to ensure creation: %v", err)
+		utils.LogStartup("Warning: failed to connect to default postgres db to ensure creation: %v", err)
 	}
 
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Jakarta",
 		host, user, password, dbname, port)
 
+	dbWriter := utils.GetDatabaseLogWriter()
+	gormLogger := logger.New(
+		log.New(dbWriter, "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold:             200 * time.Millisecond,
+			LogLevel:                  logger.Warn,
+			IgnoreRecordNotFoundError: false,
+			Colorful:                  false,
+		},
+	)
+
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Error),
+		Logger: gormLogger,
 	})
 	if err != nil {
 		log.Fatal("Failed to connect to PostgreSQL database: ", err)
@@ -89,7 +101,7 @@ func ConnectDB() {
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(20)
 
-	log.Println("Database connection established")
+	utils.LogStartup("Database connection established")
 
 	// Clean up duplicate friend records to ensure we can safely apply the unique index
 	DB.Exec(`
@@ -114,6 +126,7 @@ func ConnectDB() {
 		&models.GameMedia{},
 		&models.GameReview{},
 		&models.SystemSetting{},
+		&models.FeatureUsage{},
 	)
 	if err != nil {
 		log.Fatal("Failed to auto migrate database schemas: ", err)

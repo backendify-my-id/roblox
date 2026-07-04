@@ -18,7 +18,7 @@ export default function PublicGameListPage({ shareToken, onBack, onImportSuccess
       return;
     }
 
-    if (!confirm(`Impor daftar game "${list?.name || 'ini'}" ke akun Anda?`)) return;
+    if (!await window.customConfirm(`Impor daftar game "${list?.name || 'ini'}" ke akun Anda?`)) return;
 
     setIsImporting(true);
     try {

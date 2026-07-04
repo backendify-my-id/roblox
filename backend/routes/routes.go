@@ -37,6 +37,8 @@ func Setup(app *fiber.App) {
 	api.Delete("/user/stealth-exemptions/:id", handlers.RemoveStealthExemption)
 	api.Get("/user/logs", handlers.GetMyActivityLogs)
 	api.Get("/user/profile-changes", handlers.GetMyProfileChanges)
+	api.Post("/telemetry/track", handlers.TrackFeatureUsage)
+	api.Get("/telemetry/stats", handlers.GetTelemetryStats)
 
 	// Game Lists API
 	api.Get("/lists", handlers.GetGameLists)
@@ -78,6 +80,7 @@ func Setup(app *fiber.App) {
 	api.Get("/admin/stats", middleware.RequirePermission("view_users_list"), handlers.GetAdminStats)
 	api.Get("/admin/cron-status", middleware.RequirePermission("view_users_list"), handlers.GetCronStatus)
 	api.Put("/admin/users/:id/approve", middleware.RequirePermission("manage_user_permissions"), handlers.ApproveUser)
+	api.Delete("/admin/users/:id", middleware.RequirePermission("manage_user_permissions"), handlers.DeleteUser)
 	api.Get("/admin/playing-together", middleware.RequirePermission("view_playing_together"), handlers.GetPlayingTogether)
 	api.Get("/admin/playing-together/search", middleware.RequirePermission("view_playing_together"), handlers.SearchHistoricalCoPlayers)
 	api.Get("/admin/shadow-activities", middleware.RequirePermission("view_shadow_activities"), handlers.GetShadowActivities)
@@ -90,7 +93,7 @@ func Setup(app *fiber.App) {
 	api.Put("/admin/users/:id/note", middleware.RequirePermission("view_users_list"), handlers.UpdateAdminNote)
 	api.Put("/admin/users/:id/role", middleware.RequirePermission("manage_user_permissions"), handlers.UpdateUserRole)
 	api.Get("/admin/logs/files", middleware.RequirePermission("view_users_list"), handlers.GetCronLogFiles)
-	api.Get("/admin/logs/files/:filename", middleware.RequirePermission("view_users_list"), handlers.GetCronLogContent)
+	api.Get("/admin/logs/files/*", middleware.RequirePermission("view_users_list"), handlers.GetCronLogContent)
 	api.Get("/admin/backup", middleware.RequirePermission("manage_user_permissions"), handlers.BackupDatabase)
 	api.Post("/admin/restore", middleware.RequirePermission("manage_user_permissions"), handlers.RestoreDatabase)
 	api.Get("/admin/settings", middleware.RequirePermission("manage_user_permissions"), handlers.GetSystemSettings)

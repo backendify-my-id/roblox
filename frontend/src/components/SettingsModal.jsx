@@ -213,7 +213,7 @@ const SettingsModal = ({ user, onUserUpdate, onClose, showToast }) => {
   };
 
   const handleDeleteCookie = async () => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus cookie Roblox Anda dan beralih menggunakan cookie global?')) return;
+    if (!await window.customConfirm('Apakah Anda yakin ingin menghapus cookie Roblox Anda dan beralih menggunakan cookie global?')) return;
     setIsSavingCookie(true);
     try {
       const res = await fetchWithAuth('/api/user/roblox-cookie', {

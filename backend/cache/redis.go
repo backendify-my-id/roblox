@@ -3,9 +3,9 @@ package cache
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 
+	"github.com/apany/roblox-friend-tracker/utils"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -39,7 +39,8 @@ func ConnectRedis() {
 
 	_, err := RDB.Ping(Ctx).Result()
 	if err != nil {
-		log.Fatal("Failed to connect to Redis: ", err)
+		utils.LogStartup("Failed to connect to Redis: %v", err)
+		os.Exit(1)
 	}
-	log.Println("Redis connection established")
+	utils.LogStartup("Redis connection established")
 }

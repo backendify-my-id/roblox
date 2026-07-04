@@ -5,6 +5,8 @@ const MyProfileModal = ({ user, onClose }) => {
   const [activeTab, setActiveTab] = useState('activity');
   const [activityLogs, setActivityLogs] = useState([]);
   const [profileLogs, setProfileLogs] = useState([]);
+  const [telemetryData, setTelemetryData] = useState(null);
+  const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(false);
   
   const [activityOffset, setActivityOffset] = useState(0);
   const [profileOffset, setProfileOffset] = useState(0);
@@ -46,6 +48,27 @@ const MyProfileModal = ({ user, onClose }) => {
   useEffect(() => {
     fetchInitialData();
   }, []);
+
+  const fetchTelemetryData = async () => {
+    setIsLoadingTelemetry(true);
+    try {
+      const res = await fetchWithAuth('/api/telemetry/stats');
+      if (res.ok) {
+        const json = await res.json();
+        setTelemetryData(json);
+      }
+    } catch (err) {
+      console.error('Failed to fetch telemetry:', err);
+    } finally {
+      setIsLoadingTelemetry(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'telemetry') {
+      fetchTelemetryData();
+    }
+  }, [activeTab]);
 
   const handleLoadMoreActivity = async () => {
     setIsLoadingMore(true);
@@ -202,6 +225,7 @@ const MyProfileModal = ({ user, onClose }) => {
     { key: 'activity', label: `📋 Activity Log` },
     { key: 'analytics', label: `📊 Analisis Tren` },
     { key: 'profile', label: `🔄 Perubahan Profil` },
+    { key: 'telemetry', label: `📈 Analitis Penggunaan` },
   ];
 
   return (
@@ -553,7 +577,7 @@ const MyProfileModal = ({ user, onClose }) => {
                 </>
               )}
             </div>
-          ) : (
+          ) : activeTab === 'profile' ? (
             profileLogs.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Belum ada riwayat perubahan profil.</div>
             ) : (
@@ -613,6 +637,74 @@ const MyProfileModal = ({ user, onClose }) => {
                   </div>
                 )}
               </>
+            )
+          ) : (
+            isLoadingTelemetry ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Memuat data analitis...</div>
+            ) : !telemetryData ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Gagal memuat data analitis penggunaan.</div>
+            ) : (
+              <div style={{ paddingRight: '0.25rem' }}>
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', padding: '1.25rem', borderRadius: '0.75rem', marginBottom: '1.5rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Interaksi Fitur</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#60a5fa' }}>
+                    {telemetryData.total_interactions} <span style={{ fontSize: '0.85rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>tindakan</span>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Berdasarkan pelacakan penggunaan sistem asinkron</div>
+                </div>
+
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', padding: '1.25rem', borderRadius: '0.75rem', marginBottom: '1.5rem' }}>
+                  <h4 style={{ margin: '0 0 1.25rem 0', fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    🏆 Fitur Paling Sering Digunakan
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    {telemetryData.top_features?.length === 0 ? (
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', padding: '1rem 0' }}>Belum ada data pelacakan fitur.</div>
+                    ) : (
+                      telemetryData.top_features?.map((item, index) => {
+                        const colors = ['#ec4899', '#8b5cf6', '#3b82f6', '#10b981', '#fbbf24', '#64748b'];
+                        const color = colors[index % colors.length];
+                        return (
+                          <div key={item.feature_name}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#fff', marginBottom: '0.35rem' }}>
+                              <span><strong>{index + 1}. {item.feature_name}</strong></span>
+                              <span style={{ color: 'var(--text-muted)' }}>{item.count}x ({item.percentage}%)</span>
+                            </div>
+                            <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div style={{ width: `${item.percentage}%`, height: '100%', background: color, borderRadius: '4px', transition: 'width 0.5s ease-in-out' }} />
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', padding: '1.25rem', borderRadius: '0.75rem' }}>
+                  <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem' }}>
+                    🕒 Aktivitas Terakhir
+                  </h4>
+                  <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingRight: '0.25rem' }}>
+                    {telemetryData.recent_activities?.length === 0 ? (
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', padding: '1rem 0' }}>Belum ada aktivitas terbaru.</div>
+                    ) : (
+                      telemetryData.recent_activities?.map(item => (
+                        <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', padding: '0.4rem 0.5rem', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '0.5rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '0.75rem', background: item.action_type === 'click' ? 'rgba(139,92,246,0.15)' : 'rgba(16,185,129,0.15)', color: item.action_type === 'click' ? '#a78bfa' : '#34d399', padding: '0.15rem 0.4rem', borderRadius: '0.25rem', fontWeight: 'bold' }}>
+                              {item.action_type}
+                            </span>
+                            <span style={{ color: '#e2e8f0' }}>{item.feature_name}</span>
+                          </div>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                            {new Date(item.created_at).toLocaleString('id-ID')}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
             )
           )}
         </div>

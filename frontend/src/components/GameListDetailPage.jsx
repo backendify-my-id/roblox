@@ -215,7 +215,7 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
   };
 
   const handleDeleteEntry = async (entry) => {
-    if (!confirm(`Hapus "${entry.roblox_map?.name || 'game ini'}" dari list ini?`)) return;
+    if (!await window.customConfirm(`Hapus "${entry.roblox_map?.name || 'game ini'}" dari list ini?`)) return;
     try {
       const res = await fetchWithAuth(`/api/lists/${listId}/entries/${entry.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
@@ -243,7 +243,7 @@ export default function GameListDetailPage({ listId, user, showToast, onBack, on
   };
 
   const handleRegenerateCode = async () => {
-    if (!confirm('Kode lama akan tidak berlaku. Lanjutkan?')) return;
+    if (!await window.customConfirm('Kode lama akan tidak berlaku. Lanjutkan?')) return;
     try {
       const res = await fetchWithAuth(`/api/lists/${listId}/invite`, { method: 'POST' });
       const data = await res.json();

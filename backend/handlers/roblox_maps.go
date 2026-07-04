@@ -7,6 +7,7 @@ import (
 	"github.com/apany/roblox-friend-tracker/services"
 	"github.com/apany/roblox-friend-tracker/utils"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 	"time"
 )
 
@@ -120,7 +121,26 @@ func DeleteRobloxMap(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "ID is required"})
 	}
 
-	if err := database.DB.Delete(&models.RobloxMap{}, id).Error; err != nil {
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 1. Set NULL for referencing activity logs
+		if err := tx.Model(&models.ActivityLog{}).Where("map_id = ?", id).Update("map_id", nil).Error; err != nil {
+			return err
+		}
+
+		// 2. Delete referencing game entries
+		if err := tx.Where("roblox_map_id = ?", id).Delete(&models.GameEntry{}).Error; err != nil {
+			return err
+		}
+
+		// 3. Delete the map itself
+		if err := tx.Delete(&models.RobloxMap{}, id).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete map: " + err.Error()})
 	}
 

@@ -10,6 +10,7 @@ import (
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/routes"
 	"github.com/apany/roblox-friend-tracker/services"
+	"github.com/apany/roblox-friend-tracker/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
@@ -34,7 +35,11 @@ func main() {
 	})
 
 	app.Use(recover.New())
-	app.Use(logger.New())
+	app.Use(logger.New(logger.Config{
+		Output:     utils.GetHTTPLogWriter(),
+		TimeFormat: "02/Jan/2006:15:04:05 -0700",
+		Format:     "${time} | ${status} | ${latency} | ${ip} | ${method} | ${path} | ${error}\n",
+	}))
 
 	corsOrigins := os.Getenv("CORS_ORIGIN")
 	if corsOrigins == "" {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { fetchWithAuth, API_URL } from './utils/api';
+import { fetchWithAuth, API_URL, trackFeatureUsage } from './utils/api';
 import Auth from './components/Auth';
 import FriendCard from './components/FriendCard';
 import ActivityModal from './components/ActivityModal';
@@ -13,8 +13,7 @@ import GameEntryDetailPage from './components/GameEntryDetailPage';
 import PublicGameListPage from './components/PublicGameListPage';
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
-function Dashboard({ user, appName = 'Co-Play Capsule', showToast, onSync, isSyncing, onOpenProfile, onOpenSettings }) {
-  const [friends, setFriends] = useState([]);
+function Dashboard({ user, appName = 'Co-Play Capsule', showToast, onSync, isSyncing, onOpenProfile, onOpenSettings, friends, setFriends }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [presenceFilter, setPresenceFilter] = useState('');
@@ -56,73 +55,7 @@ function Dashboard({ user, appName = 'Co-Play Capsule', showToast, onSync, isSyn
     fetchFriends();
   }, [fetchFriends]);
 
-  // Real-time WebSocket connection
-  useEffect(() => {
-    let socket;
-    let reconnectTimeout;
-    let isMounted = true;
 
-    const connectWebSocket = () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
-        let wsUrl = API_URL.replace(/^http/, 'ws');
-        wsUrl = `${wsUrl}/api/ws?token=${encodeURIComponent(token)}`;
-
-        socket = new WebSocket(wsUrl);
-
-        socket.onopen = () => {
-          console.log('[WS] Connected to real-time status stream');
-        };
-
-        socket.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            console.log('[WS] Message received:', data);
-
-            if (data.type === 'presence_update' || data.type === 'profile_update') {
-              const updatedFriend = data.payload;
-              if (updatedFriend && updatedFriend.id) {
-                setFriends((prevFriends) => {
-                  return prevFriends.map((f) => 
-                    f.id === updatedFriend.id ? { ...f, ...updatedFriend } : f
-                  );
-                });
-              }
-            }
-          } catch (err) {
-            console.error('[WS] Error processing message:', err);
-          }
-        };
-
-        socket.onclose = (event) => {
-          console.log('[WS] Connection closed:', event.reason);
-          if (isMounted) {
-            reconnectTimeout = setTimeout(connectWebSocket, 3000);
-          }
-        };
-
-        socket.onerror = (err) => {
-          console.error('[WS] Socket error:', err);
-        };
-      } catch (err) {
-        console.error('[WS] Connection error:', err);
-      }
-    };
-
-    connectWebSocket();
-
-    return () => {
-      isMounted = false;
-      if (socket) {
-        socket.close();
-      }
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
-    };
-  }, []);
 
   const handleManualSync = onSync;
   const handleSaveNote = async (friendId, newNote) => {
@@ -326,6 +259,85 @@ function App() {
 
   const [appName, setAppName] = useState('Co-Play Capsule');
   const [enableRegistration, setEnableRegistration] = useState(true);
+  const [friends, setFriends] = useState([]);
+  const [confirmDialog, setConfirmDialog] = useState(null);
+
+  useEffect(() => {
+    window.customConfirm = (message) => {
+      return new Promise((resolve) => {
+        setConfirmDialog({ message, resolve });
+      });
+    };
+  }, []);
+
+  // Real-time WebSocket connection inside parent App to maintain connection when navigating
+  useEffect(() => {
+    if (!token) return;
+    let socket;
+    let reconnectTimeout;
+    let isMounted = true;
+
+    const connectWebSocket = () => {
+      try {
+        let wsUrl = API_URL.replace(/^http/, 'ws');
+        wsUrl = `${wsUrl}/api/ws?token=${encodeURIComponent(token)}`;
+
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = () => {
+          console.log('[WS] Connected to real-time status stream');
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            console.log('[WS] Message received:', data);
+
+            // Dispatch global event for other components
+            window.dispatchEvent(new CustomEvent('ws-message', { detail: data }));
+
+            if (data.type === 'presence_update' || data.type === 'profile_update') {
+              const updatedFriend = data.payload;
+              if (updatedFriend && updatedFriend.id) {
+                setFriends((prevFriends) => {
+                  return prevFriends.map((f) => 
+                    f.id === updatedFriend.id ? { ...f, ...updatedFriend } : f
+                  );
+                });
+              }
+            }
+          } catch (err) {
+            console.error('[WS] Error processing message:', err);
+          }
+        };
+
+        socket.onclose = (event) => {
+          console.log('[WS] Connection closed:', event.reason);
+          if (isMounted) {
+            reconnectTimeout = setTimeout(connectWebSocket, 3000);
+          }
+        };
+
+        socket.onerror = (err) => {
+          console.error('[WS] Socket error:', err);
+        };
+      } catch (err) {
+        console.error('[WS] Connection error:', err);
+      }
+    };
+
+    connectWebSocket();
+
+    return () => {
+      isMounted = false;
+      if (socket) {
+        socket.close();
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+    };
+  }, [token]);
 
   // Load public configs (App Name, enable registration)
   useEffect(() => {
@@ -387,6 +399,34 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isMyProfileOpen, setIsMyProfileOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // Telemetry: track main views changes
+  useEffect(() => {
+    if (!token) return;
+    const viewNames = {
+      dashboard: 'Live Tracker 💫',
+      admin: '🔐 Admin Panel',
+      gameLists: 'Bucket List Mabar 📖',
+      listDetail: 'Game List Detail 📑',
+      entryDetail: 'Game Entry Detail 🎮'
+    };
+    const name = viewNames[currentView] || currentView;
+    trackFeatureUsage(name, 'view');
+  }, [currentView, token]);
+
+  // Telemetry: track settings modal open
+  useEffect(() => {
+    if (isSettingsOpen) {
+      trackFeatureUsage('Account Settings ⚙️', 'view');
+    }
+  }, [isSettingsOpen]);
+
+  // Telemetry: track profile modal open
+  useEffect(() => {
+    if (isMyProfileOpen) {
+      trackFeatureUsage('My Profile 👤', 'view');
+    }
+  }, [isMyProfileOpen]);
 
   // Parse path for public view-only sharing link
   const [publicShareToken, setPublicShareToken] = useState(() => {
@@ -629,6 +669,8 @@ function App() {
           showToast={showToastMsg}
           onSync={handleManualSync}
           isSyncing={isSyncing}
+          friends={friends}
+          setFriends={setFriends}
         />
       )}
       {currentView === 'admin' && (
@@ -708,6 +750,42 @@ function App() {
         <div className={`toast toast-${toast.type}`}>
           <span className="toast-icon">{toast.type === 'success' ? '✅' : '❌'}</span>
           <span className="toast-message">{toast.message}</span>
+        </div>
+      )}
+
+      {confirmDialog && (
+        <div className="modal-overlay" style={{ zIndex: 999 }} onClick={() => { confirmDialog.resolve(false); setConfirmDialog(null); }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px', textAlign: 'center', padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1.25rem', animation: 'pulse 2s infinite' }}>⚠️</div>
+            <h3 style={{ color: '#fff', marginBottom: '0.75rem', fontSize: '1.35rem', fontWeight: '800', background: 'linear-gradient(135deg, #fff 40%, #fbbf24 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Konfirmasi Tindakan</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: '1.6', marginBottom: '2rem', whiteSpace: 'pre-line' }}>
+              {confirmDialog.message}
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
+              <button
+                onClick={() => {
+                  confirmDialog.resolve(false);
+                  setConfirmDialog(null);
+                }}
+                style={{ flex: 1, padding: '0.65rem 1.25rem', borderRadius: '0.75rem', border: '1px solid rgba(255, 255, 255, 0.1)', background: 'rgba(255, 255, 255, 0.03)', color: '#fff', cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600', transition: 'all 0.2s' }}
+                onMouseEnter={e => e.target.style.background = 'rgba(255, 255, 255, 0.08)'}
+                onMouseLeave={e => e.target.style.background = 'rgba(255, 255, 255, 0.03)'}
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => {
+                  confirmDialog.resolve(true);
+                  setConfirmDialog(null);
+                }}
+                style={{ flex: 1, padding: '0.65rem 1.25rem', borderRadius: '0.75rem', border: 'none', background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', color: '#fff', cursor: 'pointer', fontSize: '0.9rem', fontWeight: '700', boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)', transition: 'all 0.2s' }}
+                onMouseEnter={e => e.target.style.transform = 'translateY(-2px)'}
+                onMouseLeave={e => e.target.style.transform = 'translateY(0)'}
+              >
+                Ya, Lanjutkan
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

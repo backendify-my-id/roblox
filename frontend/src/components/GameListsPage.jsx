@@ -256,7 +256,7 @@ function GameListCard({ list, currentUserId, onOpen, onDeleted, showToast }) {
 
   const handleDelete = async (e) => {
     e.stopPropagation();
-    if (!confirm(`Hapus list "${list.name}"? Semua game dan media akan terhapus.`)) return;
+    if (!await window.customConfirm(`Hapus list "${list.name}"? Semua game dan media akan terhapus.`)) return;
     try {
       const res = await fetchWithAuth(`/api/lists/${list.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
@@ -269,7 +269,7 @@ function GameListCard({ list, currentUserId, onOpen, onDeleted, showToast }) {
 
   const handleLeave = async (e) => {
     e.stopPropagation();
-    if (!confirm(`Keluar dari list "${list.name}"?`)) return;
+    if (!await window.customConfirm(`Keluar dari list "${list.name}"?`)) return;
     try {
       const res = await fetchWithAuth(`/api/lists/${list.id}/leave`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
