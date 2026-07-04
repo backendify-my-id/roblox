@@ -240,7 +240,7 @@ func getFriendsPaginated(userId uint64, cookie string) ([]FriendData, error) {
 }
 
 func GetFriends(userId uint64) ([]FriendData, error) {
-	cookie := getGlobalCookie()
+	cookie := GetGlobalCookie()
 
 	// Check if this Roblox user has their own encrypted cookie in database
 	var dbUser models.User
@@ -370,7 +370,7 @@ func GetPresences(userIds []uint64, robloxCookie string) (map[uint64]PresenceDat
 
 	cookie := robloxCookie
 	if cookie == "" {
-		cookie = getGlobalCookie()
+		cookie = GetGlobalCookie()
 	}
 	if cookie != "" {
 		req.Header.Set("Cookie", ".ROBLOSECURITY="+cookie)
@@ -434,7 +434,7 @@ func SearchRobloxGames(searchQuery string, robloxCookie string) ([]OmniSearchRes
 
 	cookie := robloxCookie
 	if cookie == "" {
-		cookie = getGlobalCookie()
+		cookie = GetGlobalCookie()
 	}
 	if cookie != "" {
 		req.Header.Set("Cookie", ".ROBLOSECURITY="+cookie)
@@ -497,7 +497,7 @@ func GetUniverseDetails(universeID uint64) (string, string, uint64, error) {
 	req.Header.Set("Accept", "application/json")
 
 	// Use global cookie if configured
-	if globalCookie := getGlobalCookie(); globalCookie != "" {
+	if globalCookie := GetGlobalCookie(); globalCookie != "" {
 		req.Header.Set("Cookie", ".ROBLOSECURITY="+globalCookie)
 	}
 
@@ -551,7 +551,7 @@ func GetUniverseDetailsBatch(universeIDs []uint64) (map[uint64]UniverseDetails, 
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	req.Header.Set("Accept", "application/json")
 
-	if globalCookie := getGlobalCookie(); globalCookie != "" {
+	if globalCookie := GetGlobalCookie(); globalCookie != "" {
 		req.Header.Set("Cookie", ".ROBLOSECURITY="+globalCookie)
 	}
 
@@ -661,7 +661,7 @@ func ValidateCookie(cookie string) (uint64, string, error) {
 	return res.ID, res.Name, nil
 }
 
-func getGlobalCookie() string {
+func GetGlobalCookie() string {
 	cookie := GetSystemSettingString("global_roblox_cookie", "")
 	if cookie == "" {
 		cookie = os.Getenv("ROBLOSECURITY")

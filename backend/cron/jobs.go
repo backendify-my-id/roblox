@@ -164,6 +164,19 @@ func syncAllFriends() {
 	})
 }
 
+func getPresenceTypeRank(pType int) int {
+	switch pType {
+	case 2: // In-Game
+		return 3
+	case 3: // In-Studio
+		return 2
+	case 1: // Online
+		return 1
+	default:
+		return 0 // Offline, Invisible, etc.
+	}
+}
+
 func syncAllPresences() {
 	startTime := time.Now()
 	LogCron("INFO", "Starting 5-minute active friends presence sync job...")
@@ -228,25 +241,26 @@ func syncAllPresences() {
 		LogCron("INFO", "[PresenceSync] [Stealth] Loaded %d active stealth users configuration into memory.", len(stealthMap))
 	}
 
-	// We will query Roblox Presence API for each registered user's cohort (themselves + their active friends)
-	// and merge the results into a global presence map.
-	mergedPresences := make(map[uint64]services.PresenceData)
+	// Group Roblox User IDs by the decrypted cookie they should use.
+	// Key: Cookie string, Value: Slice of Roblox IDs to check
+	cookieGroups := make(map[string][]uint64)
+	
+	// Map to keep track of which user IDs are queried per cookie to avoid duplicates
+	cookieIdSets := make(map[string]map[uint64]bool)
 
-	// Set to keep track of Roblox IDs already queried in this cron execution cycle
-	queriedIDs := make(map[uint64]bool)
-
-	getPresenceTypeRank := func(pType int) int {
-		switch pType {
-		case 2: // In-Game
-			return 3
-		case 3: // In-Studio
-			return 2
-		case 1: // Online
-			return 1
-		default:
-			return 0 // Offline, Invisible, etc.
+	addToGroup := func(cookie string, ids []uint64) {
+		if _, exists := cookieIdSets[cookie]; !exists {
+			cookieIdSets[cookie] = make(map[uint64]bool)
+		}
+		for _, id := range ids {
+			if !cookieIdSets[cookie][id] {
+				cookieIdSets[cookie][id] = true
+				cookieGroups[cookie] = append(cookieGroups[cookie], id)
+			}
 		}
 	}
+
+	globalCookie := services.GetGlobalCookie()
 
 	for _, user := range registeredUsers {
 		var friendRobloxIDs []string
@@ -255,24 +269,15 @@ func syncAllPresences() {
 			Where("friends.user_id = ? AND friends.status = ?", user.ID, "active").
 			Pluck("users.roblox_user_id", &friendRobloxIDs)
 
-		var cohortRobloxIDStrings []string
-		cohortRobloxIDStrings = append(cohortRobloxIDStrings, user.RobloxUserID)
-		cohortRobloxIDStrings = append(cohortRobloxIDStrings, friendRobloxIDs...)
-
-		if len(cohortRobloxIDStrings) == 0 {
-			continue
-		}
-
-		// Deduplicate and parse to uint64 for the API call, filtering out already queried IDs
-		idSet := make(map[uint64]bool)
 		var cohortRobloxIDs []uint64
-		for _, idStr := range cohortRobloxIDStrings {
-			rID, parseErr := strconv.ParseUint(idStr, 10, 64)
-			if parseErr == nil && !idSet[rID] {
-				idSet[rID] = true
-				if !queriedIDs[rID] {
-					cohortRobloxIDs = append(cohortRobloxIDs, rID)
-				}
+		// Add self
+		if rID, parseErr := strconv.ParseUint(user.RobloxUserID, 10, 64); parseErr == nil {
+			cohortRobloxIDs = append(cohortRobloxIDs, rID)
+		}
+		// Add friends
+		for _, idStr := range friendRobloxIDs {
+			if rID, parseErr := strconv.ParseUint(idStr, 10, 64); parseErr == nil {
+				cohortRobloxIDs = append(cohortRobloxIDs, rID)
 			}
 		}
 
@@ -281,40 +286,44 @@ func syncAllPresences() {
 		}
 
 		// Decrypt user-specific cookie
-		var userCookie string
+		userCookie := ""
 		if user.RobloxCookie != "" {
 			decrypted, decryptErr := utils.Decrypt(user.RobloxCookie)
-			if decryptErr == nil {
+			if decryptErr == nil && decrypted != "" {
 				userCookie = decrypted
-			} else {
+			} else if decryptErr != nil {
 				LogCron("WARNING", "[PresenceSync] Gagal mendekripsi cookie untuk user '%s': %v. Menggunakan fallback global.", user.RobloxUsername, decryptErr)
 			}
 		}
 
-		// Fetch presences in batches of 100 for this cohort
-		batchSize := 100
-		for i := 0; i < len(cohortRobloxIDs); i += batchSize {
-			end := i + batchSize
-			if end > len(cohortRobloxIDs) {
-				end = len(cohortRobloxIDs)
-			}
-			batch := cohortRobloxIDs[i:end]
+		if userCookie == "" {
+			addToGroup(globalCookie, cohortRobloxIDs)
+		} else {
+			addToGroup(userCookie, cohortRobloxIDs)
+		}
+	}
 
-			pData, apiErr := services.GetPresences(batch, userCookie)
+	mergedPresences := make(map[uint64]services.PresenceData)
+
+	for cookie, robloxIDs := range cookieGroups {
+		batchSize := 100
+		for i := 0; i < len(robloxIDs); i += batchSize {
+			end := i + batchSize
+			if end > len(robloxIDs) {
+				end = len(robloxIDs)
+			}
+			batch := robloxIDs[i:end]
+
+			pData, apiErr := services.GetPresences(batch, cookie)
 			// Fallback jika API gagal (misalnya cookie user expired/HTTP 401)
-			if apiErr != nil && userCookie != "" {
-				LogCron("WARNING", "[PresenceSync] Gagal mengambil presensi untuk batch user '%s': %v. Mencoba ulang dengan cookie global...", user.RobloxUsername, apiErr)
-				pData, apiErr = services.GetPresences(batch, "") // Call with empty cookie to fallback to global
+			if apiErr != nil && cookie != globalCookie && cookie != "" {
+				LogCron("WARNING", "[PresenceSync] Gagal mengambil presensi dengan cookie user. Mencoba ulang dengan cookie global...")
+				pData, apiErr = services.GetPresences(batch, globalCookie)
 			}
 
 			if apiErr != nil {
 				LogCron("ERROR", "[PresenceSync] Gagal mengambil presensi batch: %v", apiErr)
 				continue
-			}
-
-			// Mark these IDs as queried in this cycle
-			for _, id := range batch {
-				queriedIDs[id] = true
 			}
 
 			// Merge into mergedPresences

@@ -6,7 +6,7 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: cf-postgres-client
     restart: always
-    command: access tcp --hostname postgres-db.backendify.my.id --url 0.0.0.0:5432
+    command: access tcp --hostname postgres-db.backendify.my.id --listener 0.0.0.0:5432
     networks:
       - roblox-network
     # Buka baris di bawah ini jika Anda juga ingin mengakses DB ini dari host VPS di port 5433
@@ -18,7 +18,7 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: cf-redis-client
     restart: always
-    command: access tcp --hostname redis-db.backendify.my.id --url 0.0.0.0:6379
+    command: access tcp --hostname redis-db.backendify.my.id --listener 0.0.0.0:6379
     networks:
       - roblox-network
     # Buka baris di bawah ini jika Anda juga ingin mengakses Redis ini dari host VPS di port 6378
