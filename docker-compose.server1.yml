@@ -25,6 +25,7 @@ services:
       - "5173:5173"
     environment:
       - VITE_API_URL=https://roblox-api.backendify.my.id # Domain backend publik Anda
+      - VITE_HMR_SECURE=true
     depends_on:
       - backend
     networks:
