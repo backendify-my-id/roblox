@@ -342,6 +342,10 @@ const CoPlayersPanel = ({
                                 {p.friends_with && p.friends_with.length > 0 && (
                                   <span
                                     title={`Berteman dengan di website: ${p.friends_with.join(', ')}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      alert(`${p.roblox_display_name || p.roblox_username} berteman dengan:\n• ${p.friends_with.join('\n• ')}`);
+                                    }}
                                     style={{
                                       fontSize: '0.65rem',
                                       background: 'rgba(34, 197, 94, 0.25)',
