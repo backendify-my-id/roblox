@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchWithAuth, API_URL, trackFeatureUsage } from './utils/api';
 import Auth from './components/Auth';
 import FriendCard from './components/FriendCard';
@@ -261,6 +261,34 @@ function App() {
   const [enableRegistration, setEnableRegistration] = useState(true);
   const [friends, setFriends] = useState([]);
   const [confirmDialog, setConfirmDialog] = useState(null);
+  const [presenceToasts, setPresenceToasts] = useState([]);
+
+  const friendsRef = useRef([]);
+  useEffect(() => {
+    friendsRef.current = friends;
+  }, [friends]);
+
+  const addPresenceToast = (friend, oldPresence, newPresence) => {
+    console.log('[DEBUG] addPresenceToast input:', { friend, oldPresence, newPresence });
+    if (oldPresence === newPresence) return;
+
+    const id = Date.now() + Math.random();
+    const newToast = {
+      id,
+      displayName: friend.friend_display_name || friend.friend_username,
+      username: friend.friend_username,
+      avatarUrl: friend.avatar_url,
+      oldPresence,
+      newPresence,
+      gameName: friend.current_game_name
+    };
+
+    setPresenceToasts(prev => [...prev, newToast]);
+
+    setTimeout(() => {
+      setPresenceToasts(prev => prev.filter(t => t.id !== id));
+    }, 6000);
+  };
 
   useEffect(() => {
     window.customConfirm = (message) => {
@@ -299,6 +327,12 @@ function App() {
             if (data.type === 'presence_update' || data.type === 'profile_update') {
               const updatedFriend = data.payload;
               if (updatedFriend && updatedFriend.id) {
+                if (data.type === 'presence_update') {
+                  const oldFriend = friendsRef.current.find(f => f.id === updatedFriend.id);
+                  if (oldFriend) {
+                    addPresenceToast({ ...oldFriend, ...updatedFriend }, oldFriend.current_presence, updatedFriend.current_presence);
+                  }
+                }
                 setFriends((prevFriends) => {
                   return prevFriends.map((f) => 
                     f.id === updatedFriend.id ? { ...f, ...updatedFriend } : f
@@ -331,7 +365,11 @@ function App() {
     return () => {
       isMounted = false;
       if (socket) {
-        socket.close();
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.close();
+        } else if (socket.readyState === WebSocket.CONNECTING) {
+          socket.onopen = () => socket.close();
+        }
       }
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
@@ -788,6 +826,147 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Presence notification toasts portal */}
+      <div style={{
+        position: 'fixed',
+        bottom: '2rem',
+        right: '2rem',
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.75rem',
+        pointerEvents: 'none'
+      }}>
+        {presenceToasts.map((toast) => {
+          let statusText = '';
+          let badgeColor = '';
+          let icon = '';
+
+          if (toast.newPresence === 'In-Game') {
+            statusText = `sedang bermain game: ${toast.gameName || 'Unknown Game'}`;
+            badgeColor = '#22c55e'; // Green
+            icon = '🎮';
+          } else if (toast.newPresence === 'Online') {
+            statusText = 'sekarang Online';
+            badgeColor = '#3b82f6'; // Blue
+            icon = '🟢';
+          } else if (toast.newPresence === 'Offline') {
+            statusText = 'sekarang Offline';
+            badgeColor = '#64748b'; // Gray
+            icon = '🔴';
+          } else if (toast.newPresence === 'In-Studio') {
+            statusText = 'sedang membuat map di Roblox Studio';
+            badgeColor = '#f59e0b'; // Amber
+            icon = '🛠️';
+          } else {
+            statusText = `mengubah status menjadi ${toast.newPresence}`;
+            badgeColor = '#94a3b8';
+            icon = '🔔';
+          }
+
+          return (
+            <div
+              key={toast.id}
+              style={{
+                pointerEvents: 'auto',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.85rem',
+                background: 'rgba(15, 23, 42, 0.85)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderLeft: `4px solid ${badgeColor}`,
+                padding: '0.85rem 1.25rem',
+                borderRadius: '0.75rem',
+                boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.4)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                width: '320px',
+                color: '#fff',
+                fontSize: '0.85rem',
+                animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                transition: 'all 0.2s',
+                position: 'relative'
+              }}
+            >
+              {/* Avatar with Status Ring */}
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                {toast.avatarUrl ? (
+                  <img src={toast.avatarUrl} alt="" style={{ width: 42, height: 42, borderRadius: '50%', border: `1.5px solid ${badgeColor}` }} />
+                ) : (
+                  <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#334155' }} />
+                )}
+                <span style={{
+                  position: 'absolute',
+                  bottom: -2,
+                  right: -2,
+                  background: 'rgba(15,23,42,1)',
+                  borderRadius: '50%',
+                  width: 18,
+                  height: 18,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.65rem',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                }}>
+                  {icon}
+                </span>
+              </div>
+
+              {/* Toast Content */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                <span style={{ fontWeight: 600, color: '#fff' }}>
+                  {toast.displayName} {toast.username && toast.username !== toast.displayName && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
+                      (@{toast.username})
+                    </span>
+                  )}
+                </span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem', lineHeight: 1.35 }}>
+                  {statusText}
+                </span>
+              </div>
+
+              {/* Close Button */}
+              <button
+                onClick={() => setPresenceToasts(prev => prev.filter(t => t.id !== toast.id))}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  padding: '0.2rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  alignSelf: 'flex-start',
+                  marginTop: '-0.25rem',
+                  marginRight: '-0.5rem',
+                  transition: 'color 0.2s'
+                }}
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Dynamic Keyframes for slideIn */}
+      <style>{`
+        @keyframes slideIn {
+          from {
+            transform: translateX(120%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
     </>
   );
 }
