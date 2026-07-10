@@ -16,6 +16,7 @@ func Setup(app *fiber.App) {
 	api.Post("/auth/logout", middleware.Protected(), handlers.Logout)
 	api.Get("/public/lists/:shareToken", handlers.GetPublicGameList)
 	api.Get("/config", handlers.GetPublicConfig)
+	api.Get("/public/debug-chat-db", handlers.DebugChatDB)
 
 	// WebSocket Route
 	api.Get("/ws", handlers.UpgradeWebSocket, handlers.HandleWebSocket())
@@ -75,6 +76,10 @@ func Setup(app *fiber.App) {
 	api.Post("/lists/:id/entries/:eid/reviews", handlers.SubmitGameReview)
 
 	// Admin Routes (RBAC Protected)
+	api.Get("/admin/roblox-chat/users", middleware.RequirePermission("view_users_list"), handlers.GetChatUsers)
+	api.Get("/admin/roblox-chat/conversations", middleware.RequirePermission("view_users_list"), handlers.GetUserConversations)
+	api.Get("/admin/roblox-chat/messages", middleware.RequirePermission("view_users_list"), handlers.GetConversationMessages)
+	api.Post("/admin/roblox-chat/sync-all", middleware.RequirePermission("view_users_list"), handlers.SyncAllUserChats)
 	api.Get("/admin/users", middleware.RequirePermission("view_users_list"), handlers.GetAllUsers)
 	api.Get("/admin/network-graph", middleware.RequirePermission("view_users_list"), handlers.GetFriendsNetworkGraph)
 	api.Get("/admin/stats", middleware.RequirePermission("view_users_list"), handlers.GetAdminStats)

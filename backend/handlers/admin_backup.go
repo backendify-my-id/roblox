@@ -14,7 +14,9 @@ import (
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
 	"github.com/apany/roblox-friend-tracker/services"
+	"github.com/apany/roblox-friend-tracker/cron"
 	"github.com/gofiber/fiber/v2"
+	"net/url"
 )
 
 func BackupDatabase(c *fiber.Ctx) error {
@@ -64,6 +66,10 @@ func BackupDatabase(c *fiber.Ctx) error {
 	}
 
 	filename := fmt.Sprintf("roblox_tracker_backup_%s.sql", time.Now().Format("2006-01-02_15-04-05"))
+	
+	adminUsername, _ := c.Locals("username").(string)
+	services.NotifyAdminAction(adminUsername, "Download Backup Database", fmt.Sprintf("Mengunduh arsip backup database: %s", filename))
+
 	c.Set("Content-Disposition", "attachment; filename="+filename)
 	c.Set("Content-Type", "application/sql")
 	return c.Send(out)
@@ -334,6 +340,9 @@ func RestoreAutoBackup(c *fiber.Ctx) error {
 		})
 	}
 
+	adminUsername, _ := c.Locals("username").(string)
+	services.NotifyAdminAction(adminUsername, "Restore Database", fmt.Sprintf("Memulihkan database menggunakan file backup: %s", filename))
+
 	return c.JSON(fiber.Map{"message": "Database successfully restored from archive: " + filename})
 }
 
@@ -398,10 +407,30 @@ func UpdateSystemSettings(c *fiber.Ctx) error {
 			}
 		}
 
+		// Validate Discord Webhook URL
+		if k == "discord_webhook_url" && valStr != "" {
+			if _, err := url.ParseRequestURI(valStr); err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "URL Webhook Discord tidak valid"})
+			}
+		}
+
+		// Validate Sync Intervals Durations
+		if (k == "presence_sync_interval" || k == "friend_list_sync_interval" || k == "chat_sync_interval") && valStr != "" {
+			if _, err := time.ParseDuration(valStr); err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("Format durasi %s tidak valid (contoh: 30s, 5m, 1h)", k)})
+			}
+		}
+
 		if err := services.SetSystemSetting(k, valStr); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": fmt.Sprintf("Failed to update setting %s", k)})
 		}
 	}
+
+	// Restart cron jobs to apply new synchronization intervals immediately
+	cron.StartJobs()
+
+	adminUsername, _ := c.Locals("username").(string)
+	services.NotifyAdminAction(adminUsername, "Pembaruan Pengaturan Sistem", "Mengubah pengaturan sistem global.")
 
 	return c.JSON(fiber.Map{"message": "Pengaturan sistem berhasil diperbarui"})
 }

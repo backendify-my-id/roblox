@@ -456,9 +456,9 @@ const SettingsModal = ({ user, onUserUpdate, onClose, showToast }) => {
 
           {/* Cookie Roblox Section */}
           <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
-            <h4 style={{ color: '#fff', marginBottom: '0.5rem', fontSize: '1rem' }}>Cookie Roblox (.ROBLOSECURITY)</h4>
+            <h4 style={{ color: '#fff', marginBottom: '0.5rem', fontSize: '1rem' }}>Cookie Roblox (Lengkap / Panjang)</h4>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-              Masukkan cookie Roblox Anda untuk melacak teman dengan hak akses akun Anda. Kosongkan untuk menggunakan cookie global default (.env).
+              Masukkan Cookie lengkap Anda (dari Request Headers Roblox.com) untuk melacak teman dan mengakses fitur chat monitor. Kosongkan untuk menggunakan cookie global default.
             </p>
             {hasCookie && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', padding: '0.5rem', borderRadius: '0.375rem', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)', fontSize: '0.85rem', color: '#4ade80' }}>
@@ -468,7 +468,7 @@ const SettingsModal = ({ user, onUserUpdate, onClose, showToast }) => {
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <input
                 type="password"
-                placeholder="Paste .ROBLOSECURITY cookie..."
+                placeholder="Paste full cookie string (termasuk .ROBLOSECURITY, GuestData, dll)..."
                 value={cookie}
                 onChange={e => setCookie(e.target.value)}
                 style={{ flex: 1, padding: '0.6rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--bg-card)', color: '#fff', fontSize: '0.9rem' }}

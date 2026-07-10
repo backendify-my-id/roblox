@@ -15,6 +15,7 @@ import (
 	"github.com/apany/roblox-friend-tracker/models"
 	"github.com/apany/roblox-friend-tracker/utils"
 	"github.com/google/uuid"
+	"sync"
 )
 
 // --- Types ---
@@ -97,6 +98,11 @@ func ValidateUsername(username string) (uint64, string, string, error) {
 	return res.Data[0].Id, res.Data[0].Name, res.Data[0].DisplayName, nil
 }
 
+var (
+	userDetailsMu   sync.Mutex
+	lastUserDetailsReq time.Time
+)
+
 // GetUserDetails fetches name/displayName for a batch of user IDs via POST https://users.roblox.com/v1/users
 func GetUserDetails(userIds []uint64) (map[uint64]UserDetailData, error) {
 	result := make(map[uint64]UserDetailData)
@@ -125,6 +131,15 @@ func GetUserDetails(userIds []uint64) (map[uint64]UserDetailData, error) {
 		backoff := 2 * time.Second
 
 		for attempt := 0; attempt < maxRetries; attempt++ {
+			// Enforce at least 3 seconds delay between POST /v1/users calls to prevent Roblox API 429 rate limit
+			userDetailsMu.Lock()
+			elapsed := time.Since(lastUserDetailsReq)
+			if elapsed < 3*time.Second {
+				time.Sleep(3*time.Second - elapsed)
+			}
+			lastUserDetailsReq = time.Now()
+			userDetailsMu.Unlock()
+
 			waitForRateLimit()
 			resp, reqErr = http.Post("https://users.roblox.com/v1/users", "application/json", bytes.NewBuffer(body))
 			if reqErr != nil {
@@ -198,7 +213,7 @@ func getFriendsPaginated(userId uint64, cookie string) ([]FriendData, error) {
 			return nil, err
 		}
 
-		req.Header.Set("Cookie", ".ROBLOSECURITY="+cookie)
+		req.Header.Set("Cookie", ".ROBLOSECURITY="+utils.ExtractRoblosecurity(cookie))
 		waitForRateLimit()
 
 		resp, err := http.DefaultClient.Do(req)
@@ -374,7 +389,7 @@ func GetPresences(userIds []uint64, robloxCookie string) (map[uint64]PresenceDat
 		cookie = GetGlobalCookie()
 	}
 	if cookie != "" {
-		req.Header.Set("Cookie", ".ROBLOSECURITY="+cookie)
+		req.Header.Set("Cookie", ".ROBLOSECURITY="+utils.ExtractRoblosecurity(cookie))
 	}
 
 	waitForRateLimit()
@@ -438,7 +453,7 @@ func SearchRobloxGames(searchQuery string, robloxCookie string) ([]OmniSearchRes
 		cookie = GetGlobalCookie()
 	}
 	if cookie != "" {
-		req.Header.Set("Cookie", ".ROBLOSECURITY="+cookie)
+		req.Header.Set("Cookie", ".ROBLOSECURITY="+utils.ExtractRoblosecurity(cookie))
 	}
 
 	waitForRateLimit()
@@ -499,7 +514,7 @@ func GetUniverseDetails(universeID uint64) (string, string, uint64, error) {
 
 	// Use global cookie if configured
 	if globalCookie := GetGlobalCookie(); globalCookie != "" {
-		req.Header.Set("Cookie", ".ROBLOSECURITY="+globalCookie)
+		req.Header.Set("Cookie", ".ROBLOSECURITY="+utils.ExtractRoblosecurity(globalCookie))
 	}
 
 	resp, err := http.DefaultClient.Do(req)
@@ -553,7 +568,7 @@ func GetUniverseDetailsBatch(universeIDs []uint64) (map[uint64]UniverseDetails, 
 	req.Header.Set("Accept", "application/json")
 
 	if globalCookie := GetGlobalCookie(); globalCookie != "" {
-		req.Header.Set("Cookie", ".ROBLOSECURITY="+globalCookie)
+		req.Header.Set("Cookie", ".ROBLOSECURITY="+utils.ExtractRoblosecurity(globalCookie))
 	}
 
 	var resp *http.Response
@@ -638,7 +653,7 @@ func ValidateCookie(cookie string) (uint64, string, error) {
 	if err != nil {
 		return 0, "", err
 	}
-	req.Header.Set("Cookie", ".ROBLOSECURITY="+cookie)
+	req.Header.Set("Cookie", ".ROBLOSECURITY="+utils.ExtractRoblosecurity(cookie))
 
 	waitForRateLimit()
 	resp, err := http.DefaultClient.Do(req)

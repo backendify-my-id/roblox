@@ -10,6 +10,7 @@ import UserDetailModal from './admin/UserDetailModal';
 import CoPlayersPanel from './admin/CoPlayersPanel';
 import ShadowActivitiesPanel from './admin/ShadowActivitiesPanel';
 import UsersListTable from './admin/UsersListTable';
+import RobloxChatViewer from './admin/RobloxChatViewer';
 
 // getRoleBadgeStyle and getRoleDisplayName are now defined locally in the sub-components that need them.
 
@@ -76,7 +77,8 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
       cron: 'Admin: Pemantauan Cron Job ⚙️',
       logs: 'Admin: Log Viewer Sistem 🖥️',
       backups: 'Admin: Backup Database 💾',
-      'roblox-maps': 'Admin: Pengaturan Map Roblox 🗺️'
+      'roblox-maps': 'Admin: Pengaturan Map Roblox 🗺️',
+      'chat-viewer': 'Admin: Roblox Chat Monitor 💬'
     };
     const name = adminViews[activeView] || `Admin: ${activeView}`;
     trackFeatureUsage(name, 'view');
@@ -142,7 +144,7 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
     return () => {
       active = false;
     };
-  }, [currentPage, debouncedSearchQuery, roleFilter, presenceFilter, hasViewUsers, showToast]);
+  }, [currentPage, debouncedSearchQuery, roleFilter, presenceFilter, hasViewUsers]);
 
   // Intersection Observer hook for Infinite Scroll
   useEffect(() => {
@@ -421,24 +423,6 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
             👥 Daftar Pengguna
           </button>
         )}
-        {hasViewUsers && (
-          <button
-            onClick={() => setActiveView('network-graph')}
-            style={{
-              padding: '0.6rem 1.2rem',
-              borderRadius: '0.5rem',
-              border: activeView === 'network-graph' ? '1px solid #6366f1' : '1px solid transparent',
-              background: activeView === 'network-graph' ? 'rgba(99,102,241,0.15)' : 'transparent',
-              color: activeView === 'network-graph' ? '#818cf8' : 'var(--text-muted)',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '0.95rem',
-              transition: 'all 0.2s'
-            }}
-          >
-            🕸️ Visualisasi Jaringan 3D
-          </button>
-        )}
         {hasViewCoPlayers && (
           <button
             onClick={() => setActiveView('co-players')}
@@ -455,6 +439,60 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
             }}
           >
             🎮 Sedang Main Bersama (Co-Players)
+          </button>
+        )}
+        {user.role === 'admin' && (
+          <button
+            onClick={() => setActiveView('chat-viewer')}
+            style={{
+              padding: '0.6rem 1.2rem',
+              borderRadius: '0.5rem',
+              border: activeView === 'chat-viewer' ? '1px solid #c084fc' : '1px solid transparent',
+              background: activeView === 'chat-viewer' ? 'rgba(192,132,252,0.15)' : 'transparent',
+              color: activeView === 'chat-viewer' ? '#c084fc' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.95rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            💬 Roblox Chat Monitor
+          </button>
+        )}
+        {user.role === 'admin' && (
+          <button
+            onClick={() => setActiveView('cron-monitor')}
+            style={{
+              padding: '0.6rem 1.2rem',
+              borderRadius: '0.5rem',
+              border: activeView === 'cron-monitor' ? '1px solid #14b8a6' : '1px solid transparent',
+              background: activeView === 'cron-monitor' ? 'rgba(20,184,166,0.15)' : 'transparent',
+              color: activeView === 'cron-monitor' ? '#2dd4bf' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.95rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            ⚡ Cron Monitor & Rate Limit
+          </button>
+        )}
+        {user.role === 'admin' && (
+          <button
+            onClick={() => setActiveView('logs')}
+            style={{
+              padding: '0.6rem 1.2rem',
+              borderRadius: '0.5rem',
+              border: activeView === 'logs' ? '1px solid #a855f7' : '1px solid transparent',
+              background: activeView === 'logs' ? 'rgba(168,85,247,0.15)' : 'transparent',
+              color: activeView === 'logs' ? '#c084fc' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.95rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            🖥️ Log Cron Sistem
           </button>
         )}
         {hasViewShadow && (
@@ -493,58 +531,22 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
             📊 Analisis Tren Sistem
           </button>
         )}
-        {user.role === 'admin' && (
+        {hasViewUsers && (
           <button
-            onClick={() => setActiveView('logs')}
+            onClick={() => setActiveView('network-graph')}
             style={{
               padding: '0.6rem 1.2rem',
               borderRadius: '0.5rem',
-              border: activeView === 'logs' ? '1px solid #a855f7' : '1px solid transparent',
-              background: activeView === 'logs' ? 'rgba(168,85,247,0.15)' : 'transparent',
-              color: activeView === 'logs' ? '#c084fc' : 'var(--text-muted)',
+              border: activeView === 'network-graph' ? '1px solid #6366f1' : '1px solid transparent',
+              background: activeView === 'network-graph' ? 'rgba(99,102,241,0.15)' : 'transparent',
+              color: activeView === 'network-graph' ? '#818cf8' : 'var(--text-muted)',
               cursor: 'pointer',
               fontWeight: 600,
               fontSize: '0.95rem',
               transition: 'all 0.2s'
             }}
           >
-            🖥️ Log Cron Sistem
-          </button>
-        )}
-        {user.role === 'admin' && (
-          <button
-            onClick={() => setActiveView('cron-monitor')}
-            style={{
-              padding: '0.6rem 1.2rem',
-              borderRadius: '0.5rem',
-              border: activeView === 'cron-monitor' ? '1px solid #14b8a6' : '1px solid transparent',
-              background: activeView === 'cron-monitor' ? 'rgba(20,184,166,0.15)' : 'transparent',
-              color: activeView === 'cron-monitor' ? '#2dd4bf' : 'var(--text-muted)',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '0.95rem',
-              transition: 'all 0.2s'
-            }}
-          >
-            ⚡ Cron Monitor & Rate Limit
-          </button>
-        )}
-        {user.role === 'admin' && (
-          <button
-            onClick={() => setActiveView('backup-restore')}
-            style={{
-              padding: '0.6rem 1.2rem',
-              borderRadius: '0.5rem',
-              border: activeView === 'backup-restore' ? '1px solid #10b981' : '1px solid transparent',
-              background: activeView === 'backup-restore' ? 'rgba(16,185,129,0.15)' : 'transparent',
-              color: activeView === 'backup-restore' ? '#34d399' : 'var(--text-muted)',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '0.95rem',
-              transition: 'all 0.2s'
-            }}
-          >
-            💾 Backup & Restore
+            🕸️ Visualisasi Jaringan 3D
           </button>
         )}
         {user.role === 'admin' && (
@@ -563,6 +565,24 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
             }}
           >
             🗺️ Database Map
+          </button>
+        )}
+        {user.role === 'admin' && (
+          <button
+            onClick={() => setActiveView('backup-restore')}
+            style={{
+              padding: '0.6rem 1.2rem',
+              borderRadius: '0.5rem',
+              border: activeView === 'backup-restore' ? '1px solid #10b981' : '1px solid transparent',
+              background: activeView === 'backup-restore' ? 'rgba(16,185,129,0.15)' : 'transparent',
+              color: activeView === 'backup-restore' ? '#34d399' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.95rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            💾 Backup & Restore
           </button>
         )}
         {user.role === 'admin' && (
@@ -844,6 +864,8 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
           handleRestore={handleRestore}
           isRestoring={isRestoring}
         />
+      ) : activeView === 'chat-viewer' ? (
+        <RobloxChatViewer showToast={showToast} />
       ) : activeView === 'maps' ? (
         <DatabaseMapsList showToast={showToast} />
       ) : activeView === 'system-settings' ? (

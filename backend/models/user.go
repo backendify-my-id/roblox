@@ -19,6 +19,7 @@ type User struct {
 	CurrentGameName   string    `gorm:"type:varchar(255)" json:"current_game_name"`
 	CurrentUniverseID *uint64   `gorm:"type:bigint" json:"current_universe_id,omitempty"`
 	CurrentPlaceID    *uint64   `gorm:"type:bigint" json:"current_place_id,omitempty"`
+	CurrentGameID     string    `gorm:"type:varchar(100)" json:"current_game_id,omitempty"`
 	// ------------------------------------------
 
 	CreatedAt         time.Time `json:"created_at"`

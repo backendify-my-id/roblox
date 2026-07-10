@@ -128,6 +128,8 @@ func (h *WSHub) sendToTrackers(message WSMessage) {
 	for _, f := range friends {
 		presence := f.TargetUser.CurrentPresence
 		gameName := f.TargetUser.CurrentGameName
+		gameID := f.TargetUser.CurrentGameID
+		var placeID *uint64 = f.TargetUser.CurrentPlaceID
 
 		// Evaluasi Stealth Mode
 		if f.TargetUser.IsStealth {
@@ -141,6 +143,8 @@ func (h *WSHub) sendToTrackers(message WSMessage) {
 			if !isExempted {
 				presence = "Offline"
 				gameName = "-"
+				gameID = ""
+				placeID = nil
 			}
 		}
 
@@ -153,6 +157,8 @@ func (h *WSHub) sendToTrackers(message WSMessage) {
 			"status":              f.Status,
 			"current_presence":    presence,
 			"current_game_name":   gameName,
+			"current_game_id":     gameID,
+			"current_place_id":    placeID,
 			"note":                f.Note,
 			"created_at":          f.CreatedAt,
 			"updated_at":          f.UpdatedAt,

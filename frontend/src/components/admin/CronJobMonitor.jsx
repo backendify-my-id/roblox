@@ -230,7 +230,8 @@ const CronJobMonitor = ({ showToast }) => {
                   return (
                     <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)', background: isRunning ? 'rgba(20,184,166,0.03)' : 'transparent', transition: 'background 0.2s' }}>
                       <td style={{ padding: '1rem', fontWeight: 'bold', color: '#fff' }}>
-                        {job.job_name === 'friends_sync' ? '👥 Friends & Profile Sync' : '🟢 Presence Sync'}
+                        {job.job_name === 'friends_sync' ? '👥 Friends & Profile Sync' : 
+                         job.job_name === 'chat_sync' ? '💬 Light Chat Sync' : '🟢 Presence Sync'}
                       </td>
                       <td style={{ padding: '1rem' }}>
                         <span style={{ background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.8rem', color: '#94a3b8' }}>

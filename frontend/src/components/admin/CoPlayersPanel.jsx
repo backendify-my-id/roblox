@@ -219,17 +219,115 @@ const CoPlayersPanel = ({
                         <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#334155' }} />
                       )}
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#fff' }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#fff', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.25rem' }}>
                           {p.roblox_display_name || p.roblox_username}
+                          {p.friends_with && p.friends_with.length > 0 && (
+                            <span
+                              title={`Berteman dengan di website: ${p.friends_with.join(', ')}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                alert(`${p.roblox_display_name || p.roblox_username} berteman dengan:\n• ${p.friends_with.join('\n• ')}`);
+                              }}
+                              style={{
+                                fontSize: '0.65rem',
+                                background: 'rgba(34, 197, 94, 0.25)',
+                                color: '#4ade80',
+                                padding: '0.05rem 0.35rem',
+                                borderRadius: '0.25rem',
+                                border: '1px solid rgba(34, 197, 94, 0.4)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.15rem',
+                                cursor: 'help'
+                              }}
+                            >
+                              🤝 Teman
+                            </span>
+                          )}
+                          {p.current_game_id && coPlaySearchResults.filter(pl => pl.current_game_id === p.current_game_id).length > 1 && (
+                            <span
+                              style={{
+                                fontSize: '0.65rem',
+                                background: 'rgba(139, 92, 246, 0.25)',
+                                color: '#a78bfa',
+                                padding: '0.05rem 0.35rem',
+                                borderRadius: '0.25rem',
+                                border: '1px solid rgba(139, 92, 246, 0.4)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.15rem',
+                                cursor: 'default'
+                              }}
+                              title="Bermain di server game yang sama"
+                            >
+                              🔥 Satu Server
+                            </span>
+                          )}
                         </span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          @{p.roblox_username}
+                        
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                          <span>@{p.roblox_username}</span>
+                          {p.play_start_time && (
+                            <span style={{ fontSize: '0.7rem', color: '#fbbf24', marginTop: '0.05rem' }}>
+                              Mulai: pukul {p.play_start_time}
+                            </span>
+                          )}
+                          {p.current_game_id && (
+                            <span style={{ 
+                              fontSize: '0.7rem', 
+                              color: 'rgba(255, 255, 255, 0.4)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              marginTop: '0.1rem'
+                            }}>
+                              <span>Server:</span>
+                              <code 
+                                style={{ 
+                                  background: 'rgba(255,255,255,0.05)', 
+                                  padding: '0.05rem 0.25rem', 
+                                  borderRadius: '0.2rem',
+                                  color: '#fbbf24'
+                                }}
+                                title={p.current_game_id}
+                              >
+                                {p.current_game_id.substring(0, 8)}...
+                              </code>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(p.current_game_id);
+                                  alert('Server ID berhasil disalin!');
+                                }}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#60a5fa',
+                                  cursor: 'pointer',
+                                  fontSize: '0.65rem',
+                                  padding: 0
+                                }}
+                              >
+                                [Salin]
+                              </button>
+                              {p.current_place_id && (
+                                <a
+                                  href={`roblox://experiences/start?placeId=${p.current_place_id}&gameInstanceId=${p.current_game_id}`}
+                                  style={{
+                                    color: '#10b981',
+                                    textDecoration: 'none',
+                                    fontSize: '0.65rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Gabung langsung ke server game ini di Roblox"
+                                >
+                                  [Join]
+                                </a>
+                              )}
+                            </span>
+                          )}
                         </span>
-                        {p.play_start_time && (
-                          <span style={{ fontSize: '0.7rem', color: '#fbbf24', marginTop: '0.15rem' }}>
-                            Mulai: pukul {p.play_start_time}
-                          </span>
-                        )}
                       </div>
                     </div>
 
@@ -336,7 +434,7 @@ const CoPlayersPanel = ({
                             ) : (
                               <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#334155' }} />
                             )}
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                               <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.25rem' }}>
                                 {p.roblox_display_name || p.roblox_username}
                                 {p.friends_with && p.friends_with.length > 0 && (
@@ -362,9 +460,82 @@ const CoPlayersPanel = ({
                                     🤝 Teman
                                   </span>
                                 )}
+                                {p.current_game_id && group.players.filter(pl => pl.current_game_id === p.current_game_id).length > 1 && (
+                                  <span
+                                    style={{
+                                      fontSize: '0.65rem',
+                                      background: 'rgba(139, 92, 246, 0.25)',
+                                      color: '#a78bfa',
+                                      padding: '0.05rem 0.35rem',
+                                      borderRadius: '0.25rem',
+                                      border: '1px solid rgba(139, 92, 246, 0.4)',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.15rem',
+                                      cursor: 'default'
+                                    }}
+                                    title="Bermain di server game yang sama"
+                                  >
+                                    🔥 Satu Server
+                                  </span>
+                                )}
                               </span>
-                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                @{p.roblox_username}
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                                <span>@{p.roblox_username}</span>
+                                {p.current_game_id && (
+                                  <span style={{ 
+                                    fontSize: '0.7rem', 
+                                    color: 'rgba(255, 255, 255, 0.4)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem'
+                                  }}>
+                                    <span>Server:</span>
+                                    <code 
+                                      style={{ 
+                                        background: 'rgba(255,255,255,0.05)', 
+                                        padding: '0.05rem 0.25rem', 
+                                        borderRadius: '0.2rem',
+                                        color: '#fbbf24'
+                                      }}
+                                      title={p.current_game_id}
+                                    >
+                                      {p.current_game_id.substring(0, 8)}...
+                                    </code>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigator.clipboard.writeText(p.current_game_id);
+                                        alert('Server ID berhasil disalin!');
+                                      }}
+                                      style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: '#60a5fa',
+                                        cursor: 'pointer',
+                                        fontSize: '0.65rem',
+                                        padding: 0
+                                      }}
+                                    >
+                                      [Salin]
+                                    </button>
+                                    {p.current_place_id && (
+                                      <a
+                                        href={`roblox://experiences/start?placeId=${p.current_place_id}&gameInstanceId=${p.current_game_id}`}
+                                        style={{
+                                          color: '#10b981',
+                                          textDecoration: 'none',
+                                          fontSize: '0.65rem',
+                                          fontWeight: 600,
+                                          cursor: 'pointer'
+                                        }}
+                                        title="Gabung langsung ke server game ini di Roblox"
+                                      >
+                                        [Join]
+                                      </a>
+                                    )}
+                                  </span>
+                                )}
                               </span>
                             </div>
                           </div>

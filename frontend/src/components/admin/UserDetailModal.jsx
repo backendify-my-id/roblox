@@ -846,46 +846,82 @@ const UserDetailModal = ({ selectedUser, onClose, showToast, onUserDeleted }) =>
                   <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid #334155', textAlign: 'left' }}>
-                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Profil</th>
-                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Status Lacak</th>
-                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Note User</th>
-                        <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Waktu Ditambahkan</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {friendsList.map(f => (
-                        <tr key={f.id} style={{ borderBottom: '1px solid #334155' }}>
-                          <td style={{ padding: '0.5rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                              {f.avatar_url ? (
-                                <img src={f.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%' }} />
-                              ) : (
-                                <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#334155' }} />
-                              )}
-                              <div>
-                                <div style={{ fontWeight: 600 }}>{f.friend_display_name || f.friend_username}</div>
-                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>@{f.friend_username}</div>
-                                {f.friend_roblox_id && (
-                                  <div style={{ fontSize: '0.75rem', marginTop: '0.1rem' }}>
-                                    ID: <a href={`https://www.roblox.com/users/${f.friend_roblox_id}/profile`} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'none' }} onMouseOver={e => e.currentTarget.style.textDecoration = 'underline'} onMouseOut={e => e.currentTarget.style.textDecoration = 'none'}>{f.friend_roblox_id}</a>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td style={{ padding: '0.5rem', fontSize: '0.9rem' }}>
-                            <span style={{ color: f.status === 'active' ? '#22c55e' : '#ef4444' }}>
-                              {f.status === 'active' ? 'Aktif' : 'Dihapus'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.5rem', fontSize: '0.8rem', color: f.note ? '#fff' : 'var(--text-muted)', fontStyle: f.note ? 'normal' : 'italic' }}>
-                            {f.note || '-'}
-                          </td>
-                          <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                            {f.created_at}
-                          </td>
-                        </tr>
-                      ))}
+                         <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Profil</th>
+                         <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Kehadiran</th>
+                         <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Status Lacak</th>
+                         <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Waktu Ditambahkan</th>
+                         <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Waktu Dihapus</th>
+                         <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>Note User</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {friendsList.map(f => (
+                         <tr key={f.id} style={{ borderBottom: '1px solid #334155' }}>
+                           <td style={{ padding: '0.5rem' }}>
+                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                 {f.avatar_url ? (
+                                   <img src={f.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%' }} />
+                                 ) : (
+                                   <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#334155' }} />
+                                 )}
+                                 <span style={{
+                                   position: 'absolute',
+                                   bottom: -2,
+                                   right: -2,
+                                   width: '10px',
+                                   height: '10px',
+                                   borderRadius: '50%',
+                                   border: '2px solid #1e293b',
+                                   background: f.current_presence === 'In-Game' ? '#8b5cf6' :
+                                               f.current_presence === 'Online' ? '#10b981' :
+                                               f.current_presence === 'In-Studio' ? '#f59e0b' : '#6b7280'
+                                 }} title={f.current_presence || 'Offline'} />
+                               </div>
+                               <div>
+                                 <div style={{ fontWeight: 600 }}>{f.friend_display_name || f.friend_username}</div>
+                                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>@{f.friend_username}</div>
+                                 {f.friend_roblox_id && (
+                                   <div style={{ fontSize: '0.75rem', marginTop: '0.1rem' }}>
+                                     ID: <a href={`https://www.roblox.com/users/${f.friend_roblox_id}/profile`} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'none' }} onMouseOver={e => e.currentTarget.style.textDecoration = 'underline'} onMouseOut={e => e.currentTarget.style.textDecoration = 'none'}>{f.friend_roblox_id}</a>
+                                   </div>
+                                 )}
+                               </div>
+                             </div>
+                           </td>
+                           <td style={{ padding: '0.5rem', fontSize: '0.9rem' }}>
+                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                               <span style={{
+                                 color: f.current_presence === 'In-Game' ? '#a78bfa' :
+                                        f.current_presence === 'Online' ? '#22c55e' :
+                                        f.current_presence === 'In-Studio' ? '#fbbf24' : 'var(--text-muted)',
+                                 fontWeight: f.current_presence !== 'Offline' ? 600 : 400
+                               }}>
+                                 {f.current_presence || 'Offline'}
+                               </span>
+                             </div>
+                             {f.current_presence === 'In-Game' && f.current_game_name && (
+                               <div style={{ fontSize: '0.75rem', color: '#a78bfa', marginTop: '0.2rem', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.current_game_name}>
+                                 🎮 {f.current_game_name}
+                               </div>
+                             )}
+                           </td>
+                           <td style={{ padding: '0.5rem', fontSize: '0.9rem' }}>
+                             <span style={{ color: f.status === 'active' ? '#22c55e' : '#ef4444' }}>
+                               {f.status === 'active' ? 'Aktif' : 'Dihapus'}
+                             </span>
+                           </td>
+                           <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                             {f.created_at}
+                           </td>
+                           <td style={{ padding: '0.5rem', fontSize: '0.85rem', color: f.status === 'removed' ? '#f87171' : 'var(--text-muted)' }}>
+                             {f.status === 'removed' ? f.removed_at : '-'}
+                           </td>
+                           <td style={{ padding: '0.5rem', fontSize: '0.8rem', color: f.note ? '#fff' : 'var(--text-muted)', fontStyle: f.note ? 'normal' : 'italic' }}>
+                             {f.note || '-'}
+                           </td>
+                         </tr>
+                       ))}
                     </tbody>
                   </table>
                 </div>

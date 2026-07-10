@@ -23,6 +23,10 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 
 	rfMap := make(map[string]FriendData)
 	var friendRobloxIDs []uint64
+	
+	// Add self to batch retrieval to keep the registered user's profile updated in the system
+	friendRobloxIDs = append(friendRobloxIDs, rID)
+
 	for _, rf := range robloxFriends {
 		rfMap[fmt.Sprintf("%d", rf.Id)] = rf
 		friendRobloxIDs = append(friendRobloxIDs, rf.Id)
@@ -48,14 +52,58 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 		}
 	}
 
+	// Sync self profile details to ensure the user's own profile changes (avatar, name) are tracked and logged
+	var selfUser models.User
+	if err := database.DB.First(&selfUser, userID).Error; err == nil {
+		selfName := selfUser.RobloxUsername
+		selfDisplayName := selfUser.RobloxDisplayName
+		if n, ok := names[rID]; ok {
+			if n.Name != "" {
+				selfName = n.Name
+			}
+			if n.DisplayName != "" {
+				selfDisplayName = n.DisplayName
+			}
+		}
+		selfAvatar := avatars[rID]
+
+		changed := false
+		if selfName != "" && selfUser.RobloxUsername != selfName {
+			logChange(selfUser.ID, userID, selfUser.RobloxUsername, "username", selfUser.RobloxUsername, selfName, selfUser.IsStealth)
+			selfUser.RobloxUsername = selfName
+			changed = true
+		}
+		if selfDisplayName != "" && selfUser.RobloxDisplayName != selfDisplayName {
+			logChange(selfUser.ID, userID, selfUser.RobloxUsername, "display_name", selfUser.RobloxDisplayName, selfDisplayName, selfUser.IsStealth)
+			selfUser.RobloxDisplayName = selfDisplayName
+			changed = true
+		}
+		if selfAvatar != "" && selfUser.AvatarURL != selfAvatar {
+			logChange(selfUser.ID, userID, selfUser.RobloxUsername, "avatar", selfUser.AvatarURL, selfAvatar, selfUser.IsStealth)
+			selfUser.AvatarURL = selfAvatar
+			changed = true
+		}
+		if changed {
+			database.DB.Save(&selfUser)
+			Hub.Broadcast(WSMessage{
+				Type:   "profile_update",
+				UserID: selfUser.ID,
+			})
+		}
+	}
+
 	for _, rf := range robloxFriends {
 		fIDStr := fmt.Sprintf("%d", rf.Id)
 		
 		rfName := rf.Name
 		rfDisplayName := rf.DisplayName
 		if n, ok := names[rf.Id]; ok {
-			rfName = n.Name
-			rfDisplayName = n.DisplayName
+			if n.Name != "" {
+				rfName = n.Name
+			}
+			if n.DisplayName != "" {
+				rfDisplayName = n.DisplayName
+			}
 		}
 
 
@@ -203,6 +251,10 @@ func logChange(targetUserID uint, ownerID uint, username, changeType, oldVal, ne
 						OfflineDuration: int(offlineDuration.Minutes()),
 					}
 					database.DB.Create(&shadowAct)
+
+					// Send Discord Webhook warning
+					NotifyShadowActivity(username, int(offlineDuration.Minutes()), oldVal, newVal)
+
 					utils.LogCron("WARNING", "[ShadowActivity] Stealth online detected! User %s (ID %d) changed avatar while offline for %.0f minutes!",
 						username, targetUserID, offlineDuration.Minutes())
 				} else {

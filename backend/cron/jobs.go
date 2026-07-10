@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"sync"
+
 	"github.com/apany/roblox-friend-tracker/cache"
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
@@ -96,27 +98,64 @@ func updateCronMetadata(jobName string, instanceID int, status string, start tim
 	}
 }
 
+var (
+	GlobalCron *cron.Cron
+	cronMu     sync.Mutex
+)
+
 func StartJobs() {
+	cronMu.Lock()
+	defer cronMu.Unlock()
+
+	if GlobalCron != nil {
+		GlobalCron.Stop()
+		LogCron("INFO", "[Cron] Stopped existing cron jobs to reload settings.")
+	}
+
 	instanceID, _ := getInstanceConfig()
-	if cache.RDB != nil {
+	// Only clear active Redis locks during the initial server startup (GlobalCron == nil).
+	// On settings reload/restart, we must NOT delete the locks because cron jobs might be actively running.
+	if GlobalCron == nil && cache.RDB != nil {
 		cache.RDB.Del(cache.Ctx, fmt.Sprintf("lock:friends_sync:%d", instanceID))
 		cache.RDB.Del(cache.Ctx, fmt.Sprintf("lock:presence_sync:%d", instanceID))
+		cache.RDB.Del(cache.Ctx, fmt.Sprintf("lock:chat_sync:%d", instanceID))
 		LogCron("INFO", "[Startup] Cleared stale Redis locks for instance %d", instanceID)
 	}
 
-	c := cron.New()
+	GlobalCron = cron.New()
 
-	// Every 15 minutes (Profile & Friends Sync)
-	c.AddFunc("*/15 * * * *", syncAllFriends)
+	// 1. Presence Sync (Dynamic Interval)
+	presenceIntervalStr := services.GetSystemSettingString("presence_sync_interval", "5m")
+	presenceInterval, err := time.ParseDuration(presenceIntervalStr)
+	if err != nil {
+		presenceInterval = 5 * time.Minute
+	}
+	GlobalCron.Schedule(cron.Every(presenceInterval), cron.FuncJob(syncAllPresences))
 
-	// Every 5 minutes (Presence Sync)
-	c.AddFunc("*/5 * * * *", syncAllPresences)
+	// 2. Profile & Friends Sync (Dynamic Interval)
+	friendsIntervalStr := services.GetSystemSettingString("friend_list_sync_interval", "15m")
+	friendsInterval, err := time.ParseDuration(friendsIntervalStr)
+	if err != nil {
+		friendsInterval = 15 * time.Minute
+	}
+	GlobalCron.Schedule(cron.Every(friendsInterval), cron.FuncJob(syncAllFriends))
 
-	// Every day at midnight (Auto-backup database)
-	c.AddFunc("0 0 * * *", AutoBackupDatabase)
+	// 3. Roblox Chat Sync (Dynamic Interval)
+	chatIntervalStr := services.GetSystemSettingString("chat_sync_interval", "10m")
+	chatInterval, err := time.ParseDuration(chatIntervalStr)
+	if err != nil {
+		chatInterval = 10 * time.Minute
+	}
+	GlobalCron.Schedule(cron.Every(chatInterval), cron.FuncJob(syncAllChats))
 
-	c.Start()
-	LogCron("INFO", "Cron jobs scheduler started.")
+	// 4. Auto-backup database (Every day at midnight)
+	GlobalCron.AddFunc("0 0 * * *", AutoBackupDatabase)
+
+	// 5. Auto cleanup of old activity logs (Every day at midnight)
+	GlobalCron.AddFunc("0 0 * * *", AutoCleanupLogs)
+
+	GlobalCron.Start()
+	LogCron("INFO", "Cron jobs scheduler started. Presence Sync: %v, Friends Sync: %v, Chat Sync: %v", presenceInterval, friendsInterval, chatInterval)
 }
 
 func AutoBackupDatabase() {
@@ -596,7 +635,9 @@ func syncAllPresences() {
 				}
 			}
 
-			if u.CurrentPresence != statusStr || u.CurrentGameName != resolvedGameName || universeChanged || placeChanged {
+			gameIDChanged := u.CurrentGameID != p.GameId
+
+			if u.CurrentPresence != statusStr || u.CurrentGameName != resolvedGameName || universeChanged || placeChanged || gameIDChanged {
 				oldPresence := u.CurrentPresence
 				oldGame := u.CurrentGameName
 
@@ -604,14 +645,16 @@ func syncAllPresences() {
 				if statusStr == "Offline" {
 					u.CurrentUniverseID = nil
 					u.CurrentPlaceID = nil
+					u.CurrentGameID = ""
 				} else {
 					u.CurrentUniverseID = p.UniverseId
 					u.CurrentPlaceID = p.PlaceId
+					u.CurrentGameID = p.GameId
 				}
 
 				u.CurrentGameName = resolvedGameName
 				u.UpdatedAt = time.Now()
-				database.DB.Model(&u).Select("current_presence", "current_game_name", "current_universe_id", "current_place_id", "updated_at").Updates(&u)
+				database.DB.Model(&u).Select("current_presence", "current_game_name", "current_universe_id", "current_place_id", "current_game_id", "updated_at").Updates(&u)
 
 				_, isStealth := stealthMap[u.RobloxUserID]
 
@@ -619,13 +662,17 @@ func syncAllPresences() {
 					UserID:    u.ID,
 					Status:    statusStr,
 					GameName:  resolvedGameName,
+					GameID:    p.GameId,
 					MapID:     mapID,
 					IsStealth: isStealth,
 				}
 				database.DB.Create(&newLog)
 
-				LogCron("INFO", "[PresenceSync] [Change Detected] User '%s' (RobloxUserID: %d) status changed from '%s' (%s) to '%s' (%s). Logged new activity record (Stealth: %t).",
-					u.RobloxUsername, rID, oldPresence, oldGame, statusStr, resolvedGameName, isStealth)
+				// Send Discord Webhook notification if configured
+				services.NotifyPresenceChange(u.RobloxUsername, oldPresence, oldGame, statusStr, resolvedGameName, isStealth)
+
+				LogCron("INFO", "[PresenceSync] [Change Detected] User '%s' (RobloxUserID: %d) status changed from '%s' (%s) to '%s' (%s) [Server ID: %s]. Logged new activity record (Stealth: %t).",
+					u.RobloxUsername, rID, oldPresence, oldGame, statusStr, resolvedGameName, p.GameId, isStealth)
 				changeCount++
 
 				services.Hub.Broadcast(services.WSMessage{
@@ -655,6 +702,7 @@ func cleanupOrphanPresences() {
 			current_game_name = '-', 
 			current_universe_id = NULL, 
 			current_place_id = NULL,
+			current_game_id = NULL,
 			updated_at = ?
 		WHERE role_id IS NULL 
 		  AND id NOT IN (
@@ -669,5 +717,118 @@ func cleanupOrphanPresences() {
 		LogCron("ERROR", "[Cleanup] Gagal mereset status teman yatim: %v", tx.Error)
 	} else if tx.RowsAffected > 0 {
 		LogCron("INFO", "[Cleanup] Berhasil mereset status %d teman yatim yang sudah tidak aktif dilacak.", tx.RowsAffected)
+	}
+}
+
+func syncAllChats() {
+	startTime := time.Now()
+	LogCron("INFO", "Starting 10-minute active users chat sync job...")
+
+	instanceID, totalInstances := getInstanceConfig()
+	updateCronMetadata("chat_sync", instanceID, "running", startTime, 0, map[string]interface{}{
+		"processed_count": 0,
+		"failed_count":    0,
+	})
+
+	if cache.RDB != nil {
+		lockKey := fmt.Sprintf("lock:chat_sync:%d", instanceID)
+		acquired, err := cache.RDB.SetNX(cache.Ctx, lockKey, "locked", 9*time.Minute).Result()
+		if err != nil {
+			LogCron("ERROR", "[ChatSync] Failed to acquire Redis lock due to error: %v", err)
+			return
+		}
+		if !acquired {
+			LogCron("WARNING", "[ChatSync] Chat sync skipped: another instance is currently running the chat sync lock for instance %d.", instanceID)
+			return
+		}
+		defer func() {
+			cache.RDB.Del(cache.Ctx, lockKey)
+			LogCron("INFO", "[ChatSync] Released Redis lock '%s'.", lockKey)
+		}()
+		LogCron("INFO", "[ChatSync] Successfully acquired Redis lock '%s' for chat sync.", lockKey)
+	}
+
+	var users []models.User
+	dbQuery := database.DB.Where("role_id IS NOT NULL AND is_approved = ? AND roblox_cookie != ''", true)
+	if totalInstances > 1 {
+		dbQuery = dbQuery.Where("id % ? = ?", totalInstances, instanceID - 1)
+	}
+
+	if err := dbQuery.Find(&users).Error; err != nil {
+		LogCron("ERROR", "[ChatSync] Failed to fetch users with cookies for chat sync: %v", err)
+		return
+	}
+
+	successCount := 0
+	failCount := 0
+
+	for _, user := range users {
+		decryptedCookie, err := utils.Decrypt(user.RobloxCookie)
+		if err != nil || decryptedCookie == "" {
+			LogCron("ERROR", "[ChatSync] Failed to decrypt cookie for user '%s'", user.RobloxUsername)
+			failCount++
+			continue
+		}
+
+		err = services.SyncUserChatsLight(decryptedCookie, uint64(user.ID))
+		if err != nil {
+			LogCron("ERROR", "[ChatSync] Failed to sync chats for user '%s': %v", user.RobloxUsername, err)
+			failCount++
+		} else {
+			LogCron("INFO", "[ChatSync] Successfully synced chats for user '%s'", user.RobloxUsername)
+			successCount++
+		}
+	}
+
+	duration := time.Since(startTime)
+	LogCron("INFO", "[ChatSync] Completed. Success: %d, Failed: %d, Duration: %v", successCount, failCount, duration)
+	updateCronMetadata("chat_sync", instanceID, "idle", startTime, duration, map[string]interface{}{
+		"processed_count": successCount,
+		"failed_count":    failCount,
+	})
+}
+
+// AutoCleanupLogs deletes activity_logs and profile_change_logs older than configured retention settings
+func AutoCleanupLogs() {
+	if database.DB == nil {
+		LogCron("WARNING", "[Cleanup] Database is not initialized. Skipping cleanup.")
+		return
+	}
+	LogCron("INFO", "[Cleanup] Starting auto cleanup of old logs...")
+
+	// 1. Clean activity logs
+	retentionDays := services.GetSystemSettingInt("log_retention_days", 30)
+	if retentionDays > 0 {
+		cutoff := time.Now().AddDate(0, 0, -retentionDays)
+		var deletedCount int64
+		if err := database.DB.Model(&models.ActivityLog{}).Where("created_at < ?", cutoff).Count(&deletedCount).Error; err == nil && deletedCount > 0 {
+			if err := database.DB.Where("created_at < ?", cutoff).Delete(&models.ActivityLog{}).Error; err == nil {
+				LogCron("INFO", "[Cleanup] Successfully deleted %d activity logs older than %d days (cutoff: %s)", deletedCount, retentionDays, cutoff.Format("2006-01-02"))
+			} else {
+				LogCron("ERROR", "[Cleanup] Failed to delete old activity logs: %v", err)
+			}
+		} else {
+			LogCron("INFO", "[Cleanup] No activity logs found older than %d days to clean.", retentionDays)
+		}
+	} else {
+		LogCron("INFO", "[Cleanup] Activity logs auto-retention is disabled (set to Selamanya).")
+	}
+
+	// 2. Clean profile change logs
+	profileRetentionDays := services.GetSystemSettingInt("profile_log_retention_days", 90)
+	if profileRetentionDays > 0 {
+		cutoff := time.Now().AddDate(0, 0, -profileRetentionDays)
+		var deletedCount int64
+		if err := database.DB.Model(&models.ProfileChangeLog{}).Where("created_at < ?", cutoff).Count(&deletedCount).Error; err == nil && deletedCount > 0 {
+			if err := database.DB.Where("created_at < ?", cutoff).Delete(&models.ProfileChangeLog{}).Error; err == nil {
+				LogCron("INFO", "[Cleanup] Successfully deleted %d profile change logs older than %d days (cutoff: %s)", deletedCount, profileRetentionDays, cutoff.Format("2006-01-02"))
+			} else {
+				LogCron("ERROR", "[Cleanup] Failed to delete old profile change logs: %v", err)
+			}
+		} else {
+			LogCron("INFO", "[Cleanup] No profile change logs found older than %d days to clean.", profileRetentionDays)
+		}
+	} else {
+		LogCron("INFO", "[Cleanup] Profile change logs auto-retention is disabled (set to Selamanya).")
 	}
 }

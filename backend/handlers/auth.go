@@ -142,12 +142,13 @@ func Login(c *fiber.Ctx) error {
 		secret = "86fb2b8d54096f17b9085173f4dd212e3e83dfd22c6656c406d9b876c85e8cf7"
 	}
 
+	timeoutHours := services.GetSystemSettingInt("session_timeout_hours", 24)
 	claims := jwt.MapClaims{
 		"user_id":   user.ID,
 		"username":  user.RobloxUsername,
 		"roblox_id": user.RobloxUserID,
 		"role":      user.Role.Name,
-		"exp":       time.Now().Add(time.Hour * 72).Unix(),
+		"exp":       time.Now().Add(time.Duration(timeoutHours) * time.Hour).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

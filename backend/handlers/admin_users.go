@@ -8,6 +8,7 @@ import (
 
 	"github.com/apany/roblox-friend-tracker/database"
 	"github.com/apany/roblox-friend-tracker/models"
+	"github.com/apany/roblox-friend-tracker/services"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -168,6 +169,14 @@ func ApproveUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
+	// Fetch username for notification
+	var targetUser models.User
+	if err := database.DB.First(&targetUser, userId).Error; err == nil {
+		adminUsername, _ := c.Locals("username").(string)
+		actionDesc := fmt.Sprintf("Persetujuan untuk user @%s diubah menjadi: %t", targetUser.RobloxUsername, req.IsApproved)
+		services.NotifyAdminAction(adminUsername, "Approve/Disapprove User", actionDesc)
+	}
+
 	statusMsg := "disetujui"
 	if !req.IsApproved {
 		statusMsg = "ditolak/ditangguhkan"
@@ -214,19 +223,29 @@ func GetUserFriends(c *fiber.Ctx) error {
 
 	// Buat response custom
 	type FriendResponse struct {
-		ID                uint   `json:"id"`
-		FriendID          uint   `json:"friend_id"`
-		FriendRobloxID    string `json:"friend_roblox_id"`
-		FriendUsername    string `json:"friend_username"`
-		FriendDisplayName string `json:"friend_display_name"`
-		AvatarURL         string `json:"avatar_url"`
-		Status            string `json:"status"`
-		Note              string `json:"note"`
-		CreatedAt         string `json:"created_at"`
+		ID                uint    `json:"id"`
+		FriendID          uint    `json:"friend_id"`
+		FriendRobloxID    string  `json:"friend_roblox_id"`
+		FriendUsername    string  `json:"friend_username"`
+		FriendDisplayName string  `json:"friend_display_name"`
+		AvatarURL         string  `json:"avatar_url"`
+		Status            string  `json:"status"`
+		Note              string  `json:"note"`
+		CreatedAt         string  `json:"created_at"`
+		RemovedAt         string  `json:"removed_at,omitempty"`
+		CurrentPresence   string  `json:"current_presence"`
+		CurrentGameName   string  `json:"current_game_name"`
+		CurrentGameID     string  `json:"current_game_id,omitempty"`
+		CurrentPlaceID    *uint64 `json:"current_place_id,omitempty"`
 	}
 
 	var res []FriendResponse
 	for _, f := range friends {
+		removedAtVal := ""
+		if f.Status == "removed" {
+			removedAtVal = f.UpdatedAt.Format("02/01/2006, 15:04:05")
+		}
+
 		res = append(res, FriendResponse{
 			ID:                f.ID,
 			FriendID:          f.TargetUser.ID,
@@ -237,6 +256,11 @@ func GetUserFriends(c *fiber.Ctx) error {
 			Status:            f.Status,
 			Note:              f.Note,
 			CreatedAt:         f.CreatedAt.Format("02/01/2006, 15:04:05"),
+			RemovedAt:         removedAtVal,
+			CurrentPresence:   f.TargetUser.CurrentPresence,
+			CurrentGameName:   f.TargetUser.CurrentGameName,
+			CurrentGameID:     f.TargetUser.CurrentGameID,
+			CurrentPlaceID:    f.TargetUser.CurrentPlaceID,
 		})
 	}
 
@@ -378,6 +402,10 @@ func DeleteUser(c *fiber.Ctx) error {
 	if err := database.DB.Model(&user).Updates(updates).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal menghapus akun pengguna: " + err.Error()})
 	}
+
+	adminUsername, _ := c.Locals("username").(string)
+	actionDesc := fmt.Sprintf("Akun pengguna @%s berhasil didegradasi/dihapus.", user.RobloxUsername)
+	services.NotifyAdminAction(adminUsername, "Hapus Akun Pengguna", actionDesc)
 
 	return c.JSON(fiber.Map{"message": "Akun pengguna berhasil dihapus (didegradasi menjadi profil terlacak)"})
 }

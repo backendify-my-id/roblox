@@ -62,6 +62,8 @@ func GetPlayingTogether(c *fiber.Ctx) error {
 		RobloxDisplayName string   `json:"roblox_display_name"`
 		AvatarURL         string   `json:"avatar_url"`
 		RoleName          string   `json:"role_name"`
+		CurrentGameID     string   `json:"current_game_id,omitempty"`
+		CurrentPlaceID    *uint64  `json:"current_place_id,omitempty"`
 		FriendsWith       []string `json:"friends_with"`
 	}
 
@@ -88,6 +90,8 @@ func GetPlayingTogether(c *fiber.Ctx) error {
 			RobloxDisplayName: u.RobloxDisplayName,
 			AvatarURL:         u.AvatarURL,
 			RoleName:          roleName,
+			CurrentGameID:     u.CurrentGameID,
+			CurrentPlaceID:    u.CurrentPlaceID,
 			FriendsWith:       make([]string, 0),
 		}
 
@@ -174,36 +178,42 @@ func GetPlayingTogether(c *fiber.Ctx) error {
 				p1 := playerMap[f.UserID]
 				p2 := playerMap[f.FriendID]
 				if p1 != nil && p2 != nil {
-					p1Name := p1.RobloxDisplayName
-					if p1Name == "" {
-						p1Name = p1.RobloxUsername
-					}
-					p2Name := p2.RobloxDisplayName
-					if p2Name == "" {
-						p2Name = p2.RobloxUsername
-					}
+					// Hanya anggap mereka mabar jika Server ID mereka sama (dan tidak kosong)
+					// Atau jika keduanya kosong (sebagai fallback kompatibilitas)
+					sameServer := (p1.CurrentGameID == p2.CurrentGameID && p1.CurrentGameID != "") || (p1.CurrentGameID == "" && p2.CurrentGameID == "")
 
-					// Append to FriendsWith (avoid duplicates)
-					alreadyAdded1 := false
-					for _, name := range p1.FriendsWith {
-						if name == p2Name {
-							alreadyAdded1 = true
-							break
+					if sameServer {
+						p1Name := p1.RobloxDisplayName
+						if p1Name == "" {
+							p1Name = p1.RobloxUsername
 						}
-					}
-					if !alreadyAdded1 {
-						p1.FriendsWith = append(p1.FriendsWith, p2Name)
-					}
+						p2Name := p2.RobloxDisplayName
+						if p2Name == "" {
+							p2Name = p2.RobloxUsername
+						}
 
-					alreadyAdded2 := false
-					for _, name := range p2.FriendsWith {
-						if name == p1Name {
-							alreadyAdded2 = true
-							break
+						// Append to FriendsWith (avoid duplicates)
+						alreadyAdded1 := false
+						for _, name := range p1.FriendsWith {
+							if name == p2Name {
+								alreadyAdded1 = true
+								break
+							}
 						}
-					}
-					if !alreadyAdded2 {
-						p2.FriendsWith = append(p2.FriendsWith, p1Name)
+						if !alreadyAdded1 {
+							p1.FriendsWith = append(p1.FriendsWith, p2Name)
+						}
+
+						alreadyAdded2 := false
+						for _, name := range p2.FriendsWith {
+							if name == p1Name {
+								alreadyAdded2 = true
+								break
+							}
+						}
+						if !alreadyAdded2 {
+							p2.FriendsWith = append(p2.FriendsWith, p1Name)
+						}
 					}
 				}
 			}
@@ -273,13 +283,16 @@ func SearchHistoricalCoPlayers(c *fiber.Ctx) error {
 	}
 
 	type PlayerInfo struct {
-		ID                uint   `json:"id"`
-		RobloxUserID      string `json:"roblox_user_id"`
-		RobloxUsername    string `json:"roblox_username"`
-		RobloxDisplayName string `json:"roblox_display_name"`
-		AvatarURL         string `json:"avatar_url"`
-		RoleName          string `json:"role_name"`
-		PlayStartTime     string `json:"play_start_time"`
+		ID                uint     `json:"id"`
+		RobloxUserID      string   `json:"roblox_user_id"`
+		RobloxUsername    string   `json:"roblox_username"`
+		RobloxDisplayName string   `json:"roblox_display_name"`
+		AvatarURL         string   `json:"avatar_url"`
+		RoleName          string   `json:"role_name"`
+		PlayStartTime     string   `json:"play_start_time"`
+		CurrentGameID     string   `json:"current_game_id,omitempty"`
+		CurrentPlaceID    *uint64  `json:"current_place_id,omitempty"`
+		FriendsWith       []string `json:"friends_with"`
 	}
 
 	activePlayers := make([]PlayerInfo, 0)
@@ -339,6 +352,8 @@ func SearchHistoricalCoPlayers(c *fiber.Ctx) error {
 
 		wasPlaying := false
 		var sessionStart *time.Time
+		gameIDVal := ""
+		var placeIDVal *uint64
 
 		var currentInGameLog *models.ActivityLog
 		for i := 0; i < len(logs); i++ {
@@ -358,6 +373,10 @@ func SearchHistoricalCoPlayers(c *fiber.Ctx) error {
 						if mapName == "" || strings.Contains(strings.ToLower(currentGameName), strings.ToLower(mapName)) {
 							wasPlaying = true
 							sessionStart = &start
+							gameIDVal = currentInGameLog.GameID
+							if currentInGameLog.Map != nil {
+								placeIDVal = currentInGameLog.Map.PlaceID
+							}
 							break
 						}
 					}
@@ -378,6 +397,10 @@ func SearchHistoricalCoPlayers(c *fiber.Ctx) error {
 						if mapName == "" || strings.Contains(strings.ToLower(currentGameName), strings.ToLower(mapName)) {
 							wasPlaying = true
 							sessionStart = &start
+							gameIDVal = currentInGameLog.GameID
+							if currentInGameLog.Map != nil {
+								placeIDVal = currentInGameLog.Map.PlaceID
+							}
 							break
 						}
 					}
@@ -396,6 +419,10 @@ func SearchHistoricalCoPlayers(c *fiber.Ctx) error {
 				if mapName == "" || strings.Contains(strings.ToLower(currentGameName), strings.ToLower(mapName)) {
 					wasPlaying = true
 					sessionStart = &start
+					gameIDVal = currentInGameLog.GameID
+					if currentInGameLog.Map != nil {
+						placeIDVal = currentInGameLog.Map.PlaceID
+					}
 				}
 			}
 		}
@@ -417,7 +444,65 @@ func SearchHistoricalCoPlayers(c *fiber.Ctx) error {
 				AvatarURL:         u.AvatarURL,
 				RoleName:          roleName,
 				PlayStartTime:     startTimeStr,
+				CurrentGameID:     gameIDVal,
+				CurrentPlaceID:    placeIDVal,
+				FriendsWith:       make([]string, 0),
 			})
+		}
+	}
+
+	// Find active friendships between these players in this search results
+	playerIDs := make([]uint, len(activePlayers))
+	playerMap := make(map[uint]*PlayerInfo)
+	for i := range activePlayers {
+		playerIDs[i] = activePlayers[i].ID
+		playerMap[activePlayers[i].ID] = &activePlayers[i]
+	}
+
+	if len(playerIDs) > 1 {
+		var friendships []models.Friend
+		database.DB.Where("status = 'active' AND user_id IN ? AND friend_id IN ?", playerIDs, playerIDs).
+			Find(&friendships)
+
+		for _, f := range friendships {
+			p1 := playerMap[f.UserID]
+			p2 := playerMap[f.FriendID]
+			if p1 != nil && p2 != nil {
+				// Mabar if same server (and not empty)
+				sameServer := (p1.CurrentGameID == p2.CurrentGameID && p1.CurrentGameID != "") || (p1.CurrentGameID == "" && p2.CurrentGameID == "")
+				if sameServer {
+					p1Name := p1.RobloxDisplayName
+					if p1Name == "" {
+						p1Name = p1.RobloxUsername
+					}
+					p2Name := p2.RobloxDisplayName
+					if p2Name == "" {
+						p2Name = p2.RobloxUsername
+					}
+
+					alreadyAdded1 := false
+					for _, name := range p1.FriendsWith {
+						if name == p2Name {
+							alreadyAdded1 = true
+							break
+						}
+					}
+					if !alreadyAdded1 {
+						p1.FriendsWith = append(p1.FriendsWith, p2Name)
+					}
+
+					alreadyAdded2 := false
+					for _, name := range p2.FriendsWith {
+						if name == p1Name {
+							alreadyAdded2 = true
+							break
+						}
+					}
+					if !alreadyAdded2 {
+						p2.FriendsWith = append(p2.FriendsWith, p1Name)
+					}
+				}
+			}
 		}
 	}
 

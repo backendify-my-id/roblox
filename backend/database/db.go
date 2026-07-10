@@ -127,6 +127,9 @@ func ConnectDB() {
 		&models.GameReview{},
 		&models.SystemSetting{},
 		&models.FeatureUsage{},
+		&models.RobloxConversation{},
+		&models.RobloxChatMessage{},
+		&models.RobloxConversationParticipant{},
 	)
 	if err != nil {
 		log.Fatal("Failed to auto migrate database schemas: ", err)
@@ -274,13 +277,23 @@ func seedRolesAndPermissions(db *gorm.DB) {
 
 func seedSystemSettings(db *gorm.DB) {
 	defaultSettings := []models.SystemSetting{
-		{Key: "app_name", Value: "Co-Play Capsule", Type: "string"},
+		{Key: "app_name", Value: "Roblox Tracker App", Type: "string"},
 		{Key: "enable_registration", Value: "true", Type: "boolean"},
 		{Key: "require_admin_approval", Value: "true", Type: "boolean"},
 		{Key: "shadow_activity_threshold", Value: "20", Type: "integer"},
 		{Key: "discord_webhook_url", Value: "", Type: "string"},
 		{Key: "maintenance_mode", Value: "false", Type: "boolean"},
 		{Key: "global_roblox_cookie", Value: "", Type: "string"},
+		{Key: "presence_sync_interval", Value: "1m", Type: "string"},
+		{Key: "friend_list_sync_interval", Value: "15m", Type: "string"},
+		{Key: "chat_sync_interval", Value: "10m", Type: "string"},
+		{Key: "log_retention_days", Value: "30", Type: "integer"},
+		{Key: "profile_log_retention_days", Value: "90", Type: "integer"},
+		{Key: "discord_notify_shadow_only", Value: "false", Type: "boolean"},
+		{Key: "discord_notify_online_offline", Value: "true", Type: "boolean"},
+		{Key: "discord_notify_game_changed", Value: "true", Type: "boolean"},
+		{Key: "discord_notify_admin_actions", Value: "true", Type: "boolean"},
+		{Key: "session_timeout_hours", Value: "24", Type: "integer"},
 	}
 
 	for _, s := range defaultSettings {

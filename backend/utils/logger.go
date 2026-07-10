@@ -60,6 +60,7 @@ var (
 	StartupWriter   = &DailyFileWriter{Category: "startup"}
 	CronWriter      = &DailyFileWriter{Category: "cron"}
 	WebSocketWriter = &DailyFileWriter{Category: "websocket"}
+	ChatSyncWriter   = &DailyFileWriter{Category: "chatsync"}
 )
 
 // LogStartup writes to console and uploads/log/startup/[date].log
@@ -84,6 +85,14 @@ func LogWebSocket(format string, v ...interface{}) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	formattedMsg := fmt.Sprintf("[%s] [WS] %s\n", timestamp, msg)
 	WebSocketWriter.Write([]byte(formattedMsg))
+}
+
+// LogChatSync writes chat sync progress logs to console and daily log files.
+func LogChatSync(level string, format string, v ...interface{}) {
+	msg := fmt.Sprintf(format, v...)
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	formattedMsg := fmt.Sprintf("[%s] [%s] %s\n", timestamp, level, msg)
+	ChatSyncWriter.Write([]byte(formattedMsg))
 }
 
 // GetDatabaseLogWriter returns an io.Writer that handles daily database log rotation for GORM
