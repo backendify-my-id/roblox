@@ -88,6 +88,11 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 			Hub.Broadcast(WSMessage{
 				Type:   "profile_update",
 				UserID: selfUser.ID,
+				Payload: map[string]interface{}{
+					"roblox_username":     selfUser.RobloxUsername,
+					"roblox_display_name": selfUser.RobloxDisplayName,
+					"avatar_url":          selfUser.AvatarURL,
+				},
 			})
 		}
 	}
@@ -139,6 +144,11 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 				Hub.Broadcast(WSMessage{
 					Type:   "profile_update",
 					UserID: targetUser.ID,
+					Payload: map[string]interface{}{
+						"roblox_username":     targetUser.RobloxUsername,
+						"roblox_display_name": targetUser.RobloxDisplayName,
+						"avatar_url":          targetUser.AvatarURL,
+					},
 				})
 			}
 		}

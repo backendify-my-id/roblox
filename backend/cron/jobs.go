@@ -678,6 +678,12 @@ func syncAllPresences() {
 				services.Hub.Broadcast(services.WSMessage{
 					Type:   "presence_update",
 					UserID: u.ID,
+					Payload: map[string]interface{}{
+						"current_presence":  statusStr,
+						"current_game_name": resolvedGameName,
+						"current_game_id":   p.GameId,
+						"current_place_id":  p.PlaceId,
+					},
 				})
 			}
 		}

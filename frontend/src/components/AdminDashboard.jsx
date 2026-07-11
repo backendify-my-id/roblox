@@ -270,22 +270,60 @@ const AdminDashboard = ({ user, onBack, showToast, onConfigUpdate }) => {
   }, [activeView]);
 
   useEffect(() => {
-    if (activeView !== 'co-players' && activeView !== 'analytics') return;
     const handleWSMessage = (e) => {
-      const { type } = e.detail;
+      const data = e.detail;
+      if (!data) return;
+
+      const { type, user_id, payload } = data;
+
       if (type === 'presence_update') {
-        const silentFetch = async () => {
-          try {
-            const res = await fetchWithAuth('/api/admin/playing-together');
-            if (res.ok) {
-              const data = await res.json();
-              setCoPlayingGroups(Array.isArray(data) ? data : []);
+        if (activeView === 'co-players' || activeView === 'analytics') {
+          const silentFetch = async () => {
+            try {
+              const res = await fetchWithAuth('/api/admin/playing-together');
+              if (res.ok) {
+                const data = await res.json();
+                setCoPlayingGroups(Array.isArray(data) ? data : []);
+              }
+            } catch (err) {
+              console.error('[WS-Refresh] Failed background refresh for Co-Players:', err);
             }
-          } catch (err) {
-            console.error('[WS-Refresh] Failed background refresh for Co-Players:', err);
-          }
-        };
-        silentFetch();
+          };
+          silentFetch();
+        }
+
+        if (activeView === 'users' && user_id && payload) {
+          setUsers(prevUsers => 
+            prevUsers.map(u => 
+              u.id === user_id 
+                ? { 
+                    ...u, 
+                    current_presence: payload.current_presence,
+                    current_game_name: payload.current_game_name,
+                    current_game_id: payload.current_game_id,
+                    current_place_id: payload.current_place_id
+                  } 
+                : u
+            )
+          );
+        }
+      }
+
+      if (type === 'profile_update' && user_id && payload) {
+        if (activeView === 'users') {
+          setUsers(prevUsers =>
+            prevUsers.map(u =>
+              u.id === user_id
+                ? {
+                    ...u,
+                    roblox_username: payload.roblox_username,
+                    roblox_display_name: payload.roblox_display_name,
+                    avatar_url: payload.avatar_url
+                  }
+                : u
+            )
+          );
+        }
       }
     };
     window.addEventListener('ws-message', handleWSMessage);

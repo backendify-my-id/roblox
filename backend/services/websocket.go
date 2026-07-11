@@ -90,6 +90,8 @@ func (h *WSHub) run() {
 				go h.sendToAdmins(message)
 			} else {
 				go h.sendToTrackers(message)
+				// Broadcast presence and profile updates to all admins as well
+				go h.sendToAdmins(message)
 			}
 		}
 	}
