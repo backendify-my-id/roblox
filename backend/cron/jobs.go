@@ -636,8 +636,9 @@ func syncAllPresences() {
 			}
 
 			gameIDChanged := u.CurrentGameID != p.GameId
+			presenceOrGameChanged := (u.CurrentPresence != statusStr || u.CurrentGameName != resolvedGameName)
 
-			if u.CurrentPresence != statusStr || u.CurrentGameName != resolvedGameName || universeChanged || placeChanged || gameIDChanged {
+			if presenceOrGameChanged || universeChanged || placeChanged || gameIDChanged {
 				oldPresence := u.CurrentPresence
 				oldGame := u.CurrentGameName
 
@@ -656,35 +657,49 @@ func syncAllPresences() {
 				u.UpdatedAt = time.Now()
 				database.DB.Model(&u).Select("current_presence", "current_game_name", "current_universe_id", "current_place_id", "current_game_id", "updated_at").Updates(&u)
 
-				_, isStealth := stealthMap[u.RobloxUserID]
+				if presenceOrGameChanged {
+					_, isStealth := stealthMap[u.RobloxUserID]
 
-				newLog := models.ActivityLog{
-					UserID:    u.ID,
-					Status:    statusStr,
-					GameName:  resolvedGameName,
-					GameID:    p.GameId,
-					MapID:     mapID,
-					IsStealth: isStealth,
+					newLog := models.ActivityLog{
+						UserID:    u.ID,
+						Status:    statusStr,
+						GameName:  resolvedGameName,
+						GameID:    p.GameId,
+						MapID:     mapID,
+						IsStealth: isStealth,
+					}
+					database.DB.Create(&newLog)
+
+					// Send Discord Webhook notification if configured
+					services.NotifyPresenceChange(u.RobloxUsername, oldPresence, oldGame, statusStr, resolvedGameName, isStealth)
+
+					LogCron("INFO", "[PresenceSync] [Change Detected] User '%s' (RobloxUserID: %d) status changed from '%s' (%s) to '%s' (%s) [Server ID: %s]. Logged new activity record (Stealth: %t).",
+						u.RobloxUsername, rID, oldPresence, oldGame, statusStr, resolvedGameName, p.GameId, isStealth)
+					changeCount++
+
+					services.Hub.Broadcast(services.WSMessage{
+						Type:   "presence_update",
+						UserID: u.ID,
+						Payload: map[string]interface{}{
+							"current_presence":  statusStr,
+							"current_game_name": resolvedGameName,
+							"current_game_id":   p.GameId,
+							"current_place_id":  p.PlaceId,
+						},
+					})
+				} else {
+					// Broadcast updated server info silently to active live views (without logging new history entry)
+					services.Hub.Broadcast(services.WSMessage{
+						Type:   "presence_update",
+						UserID: u.ID,
+						Payload: map[string]interface{}{
+							"current_presence":  statusStr,
+							"current_game_name": resolvedGameName,
+							"current_game_id":   p.GameId,
+							"current_place_id":  p.PlaceId,
+						},
+					})
 				}
-				database.DB.Create(&newLog)
-
-				// Send Discord Webhook notification if configured
-				services.NotifyPresenceChange(u.RobloxUsername, oldPresence, oldGame, statusStr, resolvedGameName, isStealth)
-
-				LogCron("INFO", "[PresenceSync] [Change Detected] User '%s' (RobloxUserID: %d) status changed from '%s' (%s) to '%s' (%s) [Server ID: %s]. Logged new activity record (Stealth: %t).",
-					u.RobloxUsername, rID, oldPresence, oldGame, statusStr, resolvedGameName, p.GameId, isStealth)
-				changeCount++
-
-				services.Hub.Broadcast(services.WSMessage{
-					Type:   "presence_update",
-					UserID: u.ID,
-					Payload: map[string]interface{}{
-						"current_presence":  statusStr,
-						"current_game_name": resolvedGameName,
-						"current_game_id":   p.GameId,
-						"current_place_id":  p.PlaceId,
-					},
-				})
 			}
 		}
 	}
