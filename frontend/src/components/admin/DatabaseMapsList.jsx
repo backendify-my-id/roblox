@@ -33,6 +33,16 @@ const DatabaseMapsList = ({ showToast }) => {
   // Sync Names state & function
   const [isSyncingNames, setIsSyncingNames] = useState(false);
 
+  // Mobile responsiveness check
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 1024);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const handleSyncMapNames = async () => {
     if (!await window.customConfirm('Apakah Anda yakin ingin menyinkronkan seluruh nama map di database ke nama bahasa Inggris resmi? Tindakan ini akan memakan waktu beberapa detik karena memanggil Roblox API secara batch.')) {
       return;
@@ -195,7 +205,7 @@ const DatabaseMapsList = ({ showToast }) => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.3s ease-out' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h2 style={{ margin: 0, color: '#fff', fontSize: '1.6rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <h2 style={{ margin: 0, color: '#fff', fontSize: isMobile ? '1.3rem' : '1.6rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             🗺️ Database Map Roblox Terdaftar
           </h2>
           <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
@@ -215,18 +225,27 @@ const DatabaseMapsList = ({ showToast }) => {
             fontSize: '0.85rem',
             cursor: isSyncingNames ? 'not-allowed' : 'pointer',
             transition: 'all 0.2s',
-            boxShadow: isSyncingNames ? 'none' : '0 4px 10px rgba(59,130,246,0.2)'
+            boxShadow: isSyncingNames ? 'none' : '0 4px 10px rgba(59,130,246,0.2)',
+            width: isMobile ? '100%' : 'auto'
           }}
         >
           {isSyncingNames ? '⏳ Mensinkronisasi...' : '⚡ Sync Nama Map ke Global (Inggris)'}
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '1.5rem', alignItems: 'start' }}>
-        {/* Left Side: DB Maps Table */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 350px', gap: '1.5rem', alignItems: 'start' }}>
+        {/* Left Side: DB Maps Table / Cards list */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '1rem', overflow: 'hidden' }}>
-          <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div className="search-container" style={{ maxWidth: '350px', width: '100%' }}>
+          <div style={{ 
+            padding: '1.25rem', 
+            borderBottom: '1px solid var(--border)', 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: isMobile ? 'flex-start' : 'center',
+            flexDirection: isMobile ? 'column' : 'row',
+            gap: '0.75rem'
+          }}>
+            <div className="search-container" style={{ maxWidth: isMobile ? '100%' : '350px', width: '100%' }}>
               <span className="search-icon">🔍</span>
               <input
                 type="text"
@@ -240,7 +259,8 @@ const DatabaseMapsList = ({ showToast }) => {
                   border: '1px solid var(--border)',
                   background: 'rgba(0,0,0,0.2)',
                   color: '#fff',
-                  fontSize: '0.9rem'
+                  fontSize: '0.9rem',
+                  boxSizing: 'border-box'
                 }}
               />
             </div>
@@ -249,93 +269,169 @@ const DatabaseMapsList = ({ showToast }) => {
             </span>
           </div>
 
-          <div style={{ overflowX: 'auto', maxHeight: '550px', overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
-              <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
-                <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border)' }}>
-                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>ID</th>
-                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Nama Map</th>
-                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Universe ID</th>
-                  <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Place ID / Redirect</th>
-                  <th style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading && page === 1 ? (
-                  <tr>
-                    <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                      Memuat database map...
-                    </td>
+          {!isMobile ? (
+            <div style={{ overflowX: 'auto', maxHeight: '550px', overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
+                  <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>ID</th>
+                    <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Nama Map</th>
+                    <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Universe ID</th>
+                    <th style={{ padding: '1rem', color: 'var(--text-muted)' }}>Place ID / Redirect</th>
+                    <th style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>Aksi</th>
                   </tr>
-                ) : maps.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                      Tidak ada map ditemukan di database.
-                    </td>
-                  </tr>
-                ) : (
-                  <>
-                    {maps.map((m) => (
-                      <tr key={m.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.01)'} onMouseLeave={e => e.currentTarget.style.background = ''}>
-                        <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>#{m.id}</td>
-                        <td style={{ padding: '1rem', color: '#fff', fontWeight: 600 }}>
-                          📍 {m.name}
-                        </td>
-                        <td style={{ padding: '1rem' }}>
-                          {m.universe_id ? (
-                            <span style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.8rem', border: '1px solid rgba(59,130,246,0.2)' }}>
-                              {m.universe_id}
-                            </span>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Belum Ditautkan</span>
-                          )}
-                        </td>
-                        <td style={{ padding: '1rem' }}>
-                          {m.place_id ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <span style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.8rem', border: '1px solid rgba(16,185,129,0.2)' }}>
-                                {m.place_id}
+                </thead>
+                <tbody>
+                  {isLoading && page === 1 ? (
+                    <tr>
+                      <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        Memuat database map...
+                      </td>
+                    </tr>
+                  ) : maps.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        Tidak ada map ditemukan di database.
+                      </td>
+                    </tr>
+                  ) : (
+                    <>
+                      {maps.map((m) => (
+                        <tr key={m.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.01)'} onMouseLeave={e => e.currentTarget.style.background = ''}>
+                          <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>#{m.id}</td>
+                          <td style={{ padding: '1rem', color: '#fff', fontWeight: 600 }}>
+                            📍 {m.name}
+                          </td>
+                          <td style={{ padding: '1rem' }}>
+                            {m.universe_id ? (
+                              <span style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.8rem', border: '1px solid rgba(59,130,246,0.2)' }}>
+                                {m.universe_id}
                               </span>
-                              <a href={`https://www.roblox.com/games/${m.place_id}`} target="_blank" rel="noopener noreferrer" style={{ color: '#fbbf24', textDecoration: 'none', fontSize: '0.8rem' }} title="Buka Game Resmi di Roblox">
-                                🔗 Buka Game
-                              </a>
-                            </div>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Belum Ditautkan</span>
-                          )}
-                        </td>
-                        <td style={{ padding: '1rem', textAlign: 'right' }}>
-                          <button
-                            onClick={() => handleDeleteMap(m.id, m.name)}
-                            style={{
-                              background: 'rgba(239,68,68,0.15)',
-                              color: '#f87171',
-                              border: '1px solid rgba(239,68,68,0.3)',
-                              padding: '0.25rem 0.6rem',
-                              borderRadius: '0.35rem',
-                              cursor: 'pointer',
-                              fontSize: '0.8rem',
-                              fontWeight: 600,
-                              transition: 'all 0.2s'
-                            }}
-                          >
-                            🗑️ Hapus
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {page < totalPages && (
-                      <tr ref={mapLoaderRef}>
-                        <td colSpan="5" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)' }}>
-                          {isFetchingMore ? '⏳ Memuat lebih banyak map...' : '📜 Gulir ke bawah untuk memuat lebih banyak'}
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                )}
-              </tbody>
-            </table>
-          </div>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Belum Ditautkan</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '1rem' }}>
+                            {m.place_id ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.8rem', border: '1px solid rgba(16,185,129,0.2)' }}>
+                                  {m.place_id}
+                                </span>
+                                <a href={`https://www.roblox.com/games/${m.place_id}`} target="_blank" rel="noopener noreferrer" style={{ color: '#fbbf24', textDecoration: 'none', fontSize: '0.8rem' }} title="Buka Game Resmi di Roblox">
+                                  🔗 Buka Game
+                                </a>
+                              </div>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Belum Ditautkan</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '1rem', textAlign: 'right' }}>
+                            <button
+                              onClick={() => handleDeleteMap(m.id, m.name)}
+                              style={{
+                                background: 'rgba(239,68,68,0.15)',
+                                color: '#f87171',
+                                border: '1px solid rgba(239,68,68,0.3)',
+                                padding: '0.25rem 0.6rem',
+                                borderRadius: '0.35rem',
+                                cursor: 'pointer',
+                                fontSize: '0.8rem',
+                                fontWeight: 600,
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              🗑️ Hapus
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {page < totalPages && (
+                        <tr ref={mapLoaderRef}>
+                          <td colSpan="5" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)' }}>
+                            {isFetchingMore ? '⏳ Memuat lebih banyak map...' : '📜 Gulir ke bawah untuk memuat lebih banyak'}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1.25rem', maxHeight: '550px', overflowY: 'auto' }}>
+              {isLoading && page === 1 ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  Memuat database map...
+                </div>
+              ) : maps.length === 0 ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  Tidak ada map ditemukan di database.
+                </div>
+              ) : (
+                <>
+                  {maps.map((m) => (
+                    <div key={m.id} style={{
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '0.75rem',
+                      padding: '1rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.6rem'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>#{m.id}</span>
+                        <button
+                          onClick={() => handleDeleteMap(m.id, m.name)}
+                          style={{
+                            background: 'rgba(239,68,68,0.15)',
+                            color: '#f87171',
+                            border: '1px solid rgba(239,68,68,0.3)',
+                            padding: '0.2rem 0.5rem',
+                            borderRadius: '0.35rem',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem',
+                            fontWeight: 600
+                          }}
+                        >
+                          🗑️ Hapus
+                        </button>
+                      </div>
+                      <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.95rem' }}>
+                        📍 {m.name}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
+                        {m.universe_id ? (
+                          <span style={{ background: 'rgba(59,130,246,0.12)', color: '#60a5fa', padding: '0.15rem 0.4rem', borderRadius: '0.25rem', fontSize: '0.75rem', border: '1px solid rgba(59,130,246,0.2)' }}>
+                            Univ: {m.universe_id}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Belum Ditautkan</span>
+                        )}
+                        {m.place_id ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <span style={{ background: 'rgba(16,185,129,0.12)', color: '#34d399', padding: '0.15rem 0.4rem', borderRadius: '0.25rem', fontSize: '0.75rem', border: '1px solid rgba(16,185,129,0.2)' }}>
+                              Place: {m.place_id}
+                            </span>
+                            <a href={`https://www.roblox.com/games/${m.place_id}`} target="_blank" rel="noopener noreferrer" style={{ color: '#fbbf24', textDecoration: 'none', fontSize: '0.75rem', fontWeight: 600 }}>
+                              [Buka Game]
+                            </a>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Belum Ditautkan</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {page < totalPages && (
+                    <div ref={mapLoaderRef} style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                      {isFetchingMore ? '⏳ Memuat lebih banyak map...' : '📜 Gulir ke bawah untuk memuat lebih banyak'}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right Side: Add Forms */}

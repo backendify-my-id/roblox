@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"sync"
@@ -117,9 +118,24 @@ func StartJobs() {
 	// On settings reload/restart, we must NOT delete the locks because cron jobs might be actively running.
 	if GlobalCron == nil && cache.RDB != nil {
 		cache.RDB.Del(cache.Ctx, fmt.Sprintf("lock:friends_sync:%d", instanceID))
+		cache.RDB.Del(cache.Ctx, fmt.Sprintf("lock:avatar_sync:%d", instanceID))
+		cache.RDB.Del(cache.Ctx, fmt.Sprintf("lock:profile_sync:%d", instanceID))
 		cache.RDB.Del(cache.Ctx, fmt.Sprintf("lock:presence_sync:%d", instanceID))
 		cache.RDB.Del(cache.Ctx, fmt.Sprintf("lock:chat_sync:%d", instanceID))
 		LogCron("INFO", "[Startup] Cleared stale Redis locks for instance %d", instanceID)
+
+		// Seed idle metadata for each job if not yet present in Redis
+		for _, jobName := range []string{"presence_sync", "friends_sync", "avatar_sync", "profile_sync", "chat_sync"} {
+			key := fmt.Sprintf("cron_metadata:%s:%d", jobName, instanceID)
+			exists, _ := cache.RDB.Exists(cache.Ctx, key).Result()
+			if exists == 0 {
+				updateCronMetadata(jobName, instanceID, "idle", time.Time{}, 0, map[string]interface{}{
+					"processed_count": 0,
+					"failed_count":    0,
+					"change_count":    0,
+				})
+			}
+		}
 	}
 
 	GlobalCron = cron.New()
@@ -132,7 +148,7 @@ func StartJobs() {
 	}
 	GlobalCron.Schedule(cron.Every(presenceInterval), cron.FuncJob(syncAllPresences))
 
-	// 2. Profile & Friends Sync (Dynamic Interval)
+	// 2. Friend List Sync - only fetches friend list changes (add/remove)
 	friendsIntervalStr := services.GetSystemSettingString("friend_list_sync_interval", "15m")
 	friendsInterval, err := time.ParseDuration(friendsIntervalStr)
 	if err != nil {
@@ -140,7 +156,23 @@ func StartJobs() {
 	}
 	GlobalCron.Schedule(cron.Every(friendsInterval), cron.FuncJob(syncAllFriends))
 
-	// 3. Roblox Chat Sync (Dynamic Interval)
+	// 3. Avatar Sync - fetches avatar/headshot changes for stealth detection
+	avatarIntervalStr := services.GetSystemSettingString("avatar_sync_interval", "15m")
+	avatarInterval, err := time.ParseDuration(avatarIntervalStr)
+	if err != nil {
+		avatarInterval = 15 * time.Minute
+	}
+	GlobalCron.Schedule(cron.Every(avatarInterval), cron.FuncJob(syncAllAvatars))
+
+	// 4. Profile Sync (Username & Display Name) - cached via Redis 1h
+	profileIntervalStr := services.GetSystemSettingString("profile_sync_interval", "60m")
+	profileInterval, err := time.ParseDuration(profileIntervalStr)
+	if err != nil {
+		profileInterval = 60 * time.Minute
+	}
+	GlobalCron.Schedule(cron.Every(profileInterval), cron.FuncJob(syncAllProfiles))
+
+	// 5. Roblox Chat Sync (Dynamic Interval)
 	chatIntervalStr := services.GetSystemSettingString("chat_sync_interval", "10m")
 	chatInterval, err := time.ParseDuration(chatIntervalStr)
 	if err != nil {
@@ -148,14 +180,15 @@ func StartJobs() {
 	}
 	GlobalCron.Schedule(cron.Every(chatInterval), cron.FuncJob(syncAllChats))
 
-	// 4. Auto-backup database (Every day at midnight)
+	// 6. Auto-backup database (Every day at midnight)
 	GlobalCron.AddFunc("0 0 * * *", AutoBackupDatabase)
 
-	// 5. Auto cleanup of old activity logs (Every day at midnight)
+	// 7. Auto cleanup of old activity logs (Every day at midnight)
 	GlobalCron.AddFunc("0 0 * * *", AutoCleanupLogs)
 
 	GlobalCron.Start()
-	LogCron("INFO", "Cron jobs scheduler started. Presence Sync: %v, Friends Sync: %v, Chat Sync: %v", presenceInterval, friendsInterval, chatInterval)
+	LogCron("INFO", "Cron jobs scheduler started. Presence: %v, FriendList: %v, Avatar: %v, Profile: %v, Chat: %v",
+		presenceInterval, friendsInterval, avatarInterval, profileInterval, chatInterval)
 }
 
 func AutoBackupDatabase() {
@@ -223,20 +256,41 @@ func syncAllFriends() {
 
 	successCount := 0
 	failCount := 0
+	totalChanges := 0
 
 	for idx, user := range users {
 		LogCron("INFO", "[FriendsSync] [%d/%d] Starting sync for user '%s' (RobloxUserID: %s)",
 			idx+1, len(users), user.RobloxUsername, user.RobloxUserID)
 
-		if err := services.SyncUserFriends(user.ID, user.RobloxUserID, true); err != nil {
-			LogCron("ERROR", "[FriendsSync] [%d/%d] Error syncing friends for user '%s': %v",
-				idx+1, len(users), user.RobloxUsername, err)
+		var userChanges int
+		maxUserRetries := 3
+		for attempt := 0; attempt <= maxUserRetries; attempt++ {
+			changes, err := services.SyncUserFriendsList(user.ID, user.RobloxUserID)
+			if err == nil {
+				LogCron("INFO", "[FriendsSync] [%d/%d] Successfully synced friend list for user '%s'.",
+					idx+1, len(users), user.RobloxUsername)
+				successCount++
+				userChanges = changes
+				break
+			}
+
+			LogCron("ERROR", "[FriendsSync] [%d/%d] Error syncing friend list for user '%s' (attempt %d/%d): %v",
+				idx+1, len(users), user.RobloxUsername, attempt+1, maxUserRetries+1, err)
+
+			if strings.Contains(err.Error(), "429") {
+				if attempt < maxUserRetries {
+					LogCron("WARNING", "[FriendsSync] Roblox API 429 rate limit hit. Sleeping 60s to allow IP cooldown before retrying user '%s'...", user.RobloxUsername)
+					time.Sleep(60 * time.Second)
+					continue
+				} else {
+					LogCron("ERROR", "[FriendsSync] Roblox API 429 rate limit hit. Max retries exceeded for user '%s'. Skipping.", user.RobloxUsername)
+				}
+			}
+
 			failCount++
-		} else {
-			LogCron("INFO", "[FriendsSync] [%d/%d] Successfully synced friends for user '%s'.",
-				idx+1, len(users), user.RobloxUsername)
-			successCount++
+			break
 		}
+		totalChanges += userChanges
 	}
 
 	duration := time.Since(startTime)
@@ -244,6 +298,139 @@ func syncAllFriends() {
 	updateCronMetadata("friends_sync", instanceID, "idle", startTime, duration, map[string]interface{}{
 		"processed_count": successCount,
 		"failed_count":    failCount,
+		"change_count":    totalChanges,
+	})
+}
+
+func syncAllAvatars() {
+	startTime := time.Now()
+	LogCron("INFO", "[AvatarSync] Starting avatar sync job...")
+
+	instanceID, totalInstances := getInstanceConfig()
+	updateCronMetadata("avatar_sync", instanceID, "running", startTime, 0, map[string]interface{}{
+		"processed_count": 0,
+		"failed_count":    0,
+		"change_count":    0,
+	})
+
+	if cache.RDB != nil {
+		lockKey := fmt.Sprintf("lock:avatar_sync:%d", instanceID)
+		acquired, err := cache.RDB.SetNX(cache.Ctx, lockKey, "locked", 14*time.Minute).Result()
+		if err != nil || !acquired {
+			LogCron("WARNING", "[AvatarSync] Skipped: another instance already running.")
+			return
+		}
+		defer func() {
+			cache.RDB.Del(cache.Ctx, lockKey)
+		}()
+	}
+
+	var users []models.User
+	dbQuery := database.DB.Where("role_id IS NOT NULL AND is_approved = ?", true)
+	if totalInstances > 1 {
+		dbQuery = dbQuery.Where("id % ? = ?", totalInstances, instanceID-1)
+	}
+	if err := dbQuery.Find(&users).Error; err != nil {
+		LogCron("ERROR", "[AvatarSync] Failed to fetch users: %v", err)
+		return
+	}
+
+	successCount := 0
+	failCount := 0
+	totalChanges := 0
+
+	for idx, user := range users {
+		LogCron("INFO", "[AvatarSync] [%d/%d] Syncing avatars for user '%s'", idx+1, len(users), user.RobloxUsername)
+		changes, err := services.SyncUserFriendAvatars(user.ID, user.RobloxUserID)
+		if err != nil {
+			LogCron("ERROR", "[AvatarSync] [%d/%d] Error for user '%s': %v", idx+1, len(users), user.RobloxUsername, err)
+			failCount++
+			if strings.Contains(err.Error(), "429") {
+				LogCron("WARNING", "[AvatarSync] 429 rate limit hit. Sleeping 60s before next user...")
+				time.Sleep(60 * time.Second)
+			}
+		} else {
+			successCount++
+			totalChanges += changes
+		}
+	}
+
+	duration := time.Since(startTime)
+	LogCron("INFO", "[AvatarSync] Completed. Success: %d, Failed: %d, Duration: %v", successCount, failCount, duration)
+	updateCronMetadata("avatar_sync", instanceID, "idle", startTime, duration, map[string]interface{}{
+		"processed_count": successCount,
+		"failed_count":    failCount,
+		"change_count":    totalChanges,
+	})
+}
+
+func syncAllProfiles() {
+	startTime := time.Now()
+	LogCron("INFO", "[ProfileSync] Starting profile (username/display name) sync job...")
+
+	instanceID, totalInstances := getInstanceConfig()
+	updateCronMetadata("profile_sync", instanceID, "running", startTime, 0, map[string]interface{}{
+		"processed_count": 0,
+		"failed_count":    0,
+		"change_count":    0,
+	})
+
+	if cache.RDB != nil {
+		lockKey := fmt.Sprintf("lock:profile_sync:%d", instanceID)
+		acquired, err := cache.RDB.SetNX(cache.Ctx, lockKey, "locked", 59*time.Minute).Result()
+		if err != nil || !acquired {
+			LogCron("WARNING", "[ProfileSync] Skipped: another instance already running.")
+			return
+		}
+		defer func() {
+			cache.RDB.Del(cache.Ctx, lockKey)
+		}()
+	}
+
+	var users []models.User
+	dbQuery := database.DB.Where("role_id IS NOT NULL AND is_approved = ?", true)
+	if totalInstances > 1 {
+		dbQuery = dbQuery.Where("id % ? = ?", totalInstances, instanceID-1)
+	}
+	if err := dbQuery.Find(&users).Error; err != nil {
+		LogCron("ERROR", "[ProfileSync] Failed to fetch users: %v", err)
+		return
+	}
+
+	successCount := 0
+	failCount := 0
+	totalChanges := 0
+
+	for idx, user := range users {
+		LogCron("INFO", "[ProfileSync] [%d/%d] Syncing profiles for user '%s'", idx+1, len(users), user.RobloxUsername)
+		var userChanges int
+		maxRetries := 3
+		for attempt := 0; attempt <= maxRetries; attempt++ {
+			changes, err := services.SyncUserFriendProfiles(user.ID, user.RobloxUserID)
+			if err == nil {
+				successCount++
+				userChanges = changes
+				break
+			}
+			LogCron("ERROR", "[ProfileSync] [%d/%d] Error for user '%s' (attempt %d/%d): %v",
+				idx+1, len(users), user.RobloxUsername, attempt+1, maxRetries+1, err)
+			if strings.Contains(err.Error(), "429") && attempt < maxRetries {
+				LogCron("WARNING", "[ProfileSync] 429 rate limit. Sleeping 60s before retry...")
+				time.Sleep(60 * time.Second)
+				continue
+			}
+			failCount++
+			break
+		}
+		totalChanges += userChanges
+	}
+
+	duration := time.Since(startTime)
+	LogCron("INFO", "[ProfileSync] Completed. Success: %d, Failed: %d, Duration: %v", successCount, failCount, duration)
+	updateCronMetadata("profile_sync", instanceID, "idle", startTime, duration, map[string]interface{}{
+		"processed_count": successCount,
+		"failed_count":    failCount,
+		"change_count":    totalChanges,
 	})
 }
 

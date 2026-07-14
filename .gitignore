@@ -38,3 +38,5 @@ frontend/.env
 backend/roblox-friend-tracker
 
 docker-compose.yml
+
+error.md

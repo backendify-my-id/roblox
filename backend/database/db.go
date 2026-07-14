@@ -286,6 +286,8 @@ func seedSystemSettings(db *gorm.DB) {
 		{Key: "global_roblox_cookie", Value: "", Type: "string"},
 		{Key: "presence_sync_interval", Value: "1m", Type: "string"},
 		{Key: "friend_list_sync_interval", Value: "15m", Type: "string"},
+		{Key: "avatar_sync_interval", Value: "15m", Type: "string"},
+		{Key: "profile_sync_interval", Value: "60m", Type: "string"},
 		{Key: "chat_sync_interval", Value: "10m", Type: "string"},
 		{Key: "log_retention_days", Value: "30", Type: "integer"},
 		{Key: "profile_log_retention_days", Value: "90", Type: "integer"},

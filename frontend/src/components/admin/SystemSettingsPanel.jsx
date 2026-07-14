@@ -22,6 +22,8 @@ const SystemSettingsPanel = ({ showToast, onConfigUpdate }) => {
     global_roblox_cookie: '',
     presence_sync_interval: '1m',
     friend_list_sync_interval: '15m',
+    avatar_sync_interval: '15m',
+    profile_sync_interval: '60m',
     chat_sync_interval: '10m',
     log_retention_days: 30,
     profile_log_retention_days: 90,
@@ -232,9 +234,18 @@ const SystemSettingsPanel = ({ showToast, onConfigUpdate }) => {
               style={selectStyle}
             >
               <option value="30s">30 Detik (Sangat Cepat)</option>
-              <option value="1m">1 Menit (Direkomendasikan)</option>
+              <option value="1m">1 Menit</option>
               <option value="2m">2 Menit</option>
+              <option value="3m">3 Menit</option>
               <option value="5m">5 Menit</option>
+              <option value="8m">8 Menit</option>
+              <option value="10m">10 Menit</option>
+              <option value="15m">15 Menit</option>
+              <option value="20m">20 Menit</option>
+              <option value="25m">25 Menit</option>
+              <option value="30m">30 Menit</option>
+              <option value="45m">45 Menit</option>
+              <option value="60m">60 Menit (1 Jam)</option>
             </select>
           </div>
 
@@ -246,12 +257,70 @@ const SystemSettingsPanel = ({ showToast, onConfigUpdate }) => {
               onChange={e => handleChange('friend_list_sync_interval', e.target.value)}
               style={selectStyle}
             >
-              <option value="5m">5 Menit (Sangat Cepat)</option>
+              <option value="1m">1 Menit</option>
+              <option value="2m">2 Menit</option>
+              <option value="3m">3 Menit</option>
+              <option value="5m">5 Menit</option>
+              <option value="8m">8 Menit</option>
               <option value="10m">10 Menit</option>
-              <option value="15m">15 Menit (Direkomendasikan)</option>
+              <option value="15m">15 Menit</option>
+              <option value="20m">20 Menit</option>
+              <option value="25m">25 Menit</option>
               <option value="30m">30 Menit</option>
-              <option value="1h">1 Jam</option>
+              <option value="45m">45 Menit</option>
+              <option value="60m">60 Menit (1 Jam)</option>
               <option value="6h">6 Jam</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div>
+            <label style={labelStyle}>Avatar (Foto Profil)</label>
+            <span style={descStyle}>Pengecekan perubahan avatar — digunakan untuk deteksi Stealth Mode.</span>
+            <select
+              value={settings.avatar_sync_interval}
+              onChange={e => handleChange('avatar_sync_interval', e.target.value)}
+              style={selectStyle}
+            >
+              <option value="1m">1 Menit</option>
+              <option value="2m">2 Menit</option>
+              <option value="3m">3 Menit</option>
+              <option value="5m">5 Menit</option>
+              <option value="8m">8 Menit</option>
+              <option value="10m">10 Menit</option>
+              <option value="15m">15 Menit</option>
+              <option value="20m">20 Menit</option>
+              <option value="25m">25 Menit</option>
+              <option value="30m">30 Menit</option>
+              <option value="45m">45 Menit</option>
+              <option value="60m">60 Menit (1 Jam)</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Profil (Username & Display Name)</label>
+            <span style={descStyle}>Sinkronisasi nama pengguna dan nama tampilan teman. Lebih jarang karena data statis.</span>
+            <select
+              value={settings.profile_sync_interval}
+              onChange={e => handleChange('profile_sync_interval', e.target.value)}
+              style={selectStyle}
+            >
+              <option value="1m">1 Menit</option>
+              <option value="2m">2 Menit</option>
+              <option value="3m">3 Menit</option>
+              <option value="5m">5 Menit</option>
+              <option value="8m">8 Menit</option>
+              <option value="10m">10 Menit</option>
+              <option value="15m">15 Menit</option>
+              <option value="20m">20 Menit</option>
+              <option value="25m">25 Menit</option>
+              <option value="30m">30 Menit</option>
+              <option value="45m">45 Menit</option>
+              <option value="60m">60 Menit (1 Jam)</option>
+              <option value="3h">3 Jam</option>
+              <option value="6h">6 Jam</option>
+              <option value="24h">24 Jam (Hemat API)</option>
             </select>
           </div>
         </div>
@@ -264,10 +333,18 @@ const SystemSettingsPanel = ({ showToast, onConfigUpdate }) => {
             onChange={e => handleChange('chat_sync_interval', e.target.value)}
             style={selectStyle}
           >
+            <option value="1m">1 Menit</option>
+            <option value="2m">2 Menit</option>
+            <option value="3m">3 Menit</option>
             <option value="5m">5 Menit</option>
-            <option value="10m">10 Menit (Direkomendasikan)</option>
+            <option value="8m">8 Menit</option>
+            <option value="10m">10 Menit</option>
+            <option value="15m">15 Menit</option>
+            <option value="20m">20 Menit</option>
+            <option value="25m">25 Menit</option>
             <option value="30m">30 Menit</option>
-            <option value="1h">1 Jam</option>
+            <option value="45m">45 Menit</option>
+            <option value="60m">60 Menit (1 Jam)</option>
           </select>
         </div>
 

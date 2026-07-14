@@ -230,8 +230,10 @@ const CronJobMonitor = ({ showToast }) => {
                   return (
                     <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)', background: isRunning ? 'rgba(20,184,166,0.03)' : 'transparent', transition: 'background 0.2s' }}>
                       <td style={{ padding: '1rem', fontWeight: 'bold', color: '#fff' }}>
-                        {job.job_name === 'friends_sync' ? '👥 Friends & Profile Sync' : 
-                         job.job_name === 'chat_sync' ? '💬 Light Chat Sync' : '🟢 Presence Sync'}
+                        {job.job_name === 'friends_sync' ? '👥 Daftar Teman Sync' :
+                         job.job_name === 'avatar_sync'  ? '🖼️ Avatar Sync' :
+                         job.job_name === 'profile_sync' ? '👤 Profil Sync (Username)' :
+                         job.job_name === 'chat_sync'    ? '💬 Chat Sync' : '🟢 Presence Sync'}
                       </td>
                       <td style={{ padding: '1rem' }}>
                         <span style={{ background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.8rem', color: '#94a3b8' }}>
@@ -259,9 +261,14 @@ const CronJobMonitor = ({ showToast }) => {
                         {job.duration_ms > 0 ? `${(job.duration_ms / 1000).toFixed(2)} detik` : '-'}
                       </td>
                       <td style={{ padding: '1rem' }}>
-                        {job.job_name === 'friends_sync' ? (
-                          <div style={{ fontSize: '0.8rem' }}>
-                            <span style={{ color: '#4ade80' }}>✓ {job.processed_count} Sukses</span> · <span style={{ color: '#f87171' }}>✗ {job.failed_count} Gagal</span>
+                        {(job.job_name === 'friends_sync' || job.job_name === 'avatar_sync' || job.job_name === 'profile_sync') ? (
+                          <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <div>
+                              <span style={{ color: '#4ade80' }}>✓ {job.processed_count} Sukses</span> · <span style={{ color: '#f87171' }}>✗ {job.failed_count} Gagal</span>
+                            </div>
+                            <div style={{ color: '#fbbf24' }}>
+                              ⚡ {job.change_count || 0} Perubahan
+                            </div>
                           </div>
                         ) : (
                           <div style={{ fontSize: '0.8rem' }}>

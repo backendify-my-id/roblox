@@ -108,6 +108,48 @@ func waitForRateLimit() {
 	lastRequest = time.Now()
 }
 
+// WaitForUsersRateLimit specifically limits calls to the users endpoint (max 18 req/min for safety margin).
+func WaitForUsersRateLimit() {
+	rateMu.Lock()
+	defer rateMu.Unlock()
+
+	ctx := cache.Ctx
+	rdb := cache.RDB
+	ip := getPublicIP()
+
+	// Local fallback if Redis is offline
+	if rdb == nil {
+		return
+	}
+
+	for {
+		now := time.Now()
+		minuteKey := fmt.Sprintf("ratelimit:roblox_users_api:%s:%s", ip, now.Format("2006-01-02 15:04"))
+
+		count, err := rdb.Incr(ctx, minuteKey).Result()
+		if err != nil {
+			utils.LogCron("ERROR", "[RateLimit-Users] Redis connection failed, bypassing rate limit: %v", err)
+			break
+		}
+
+		if count == 1 {
+			rdb.Expire(ctx, minuteKey, 120*time.Second)
+		}
+
+		// Safe margin: 18 hits per minute (Roblox limit is 20)
+		if count <= 18 {
+			break
+		}
+
+		nextMinute := now.Truncate(time.Minute).Add(time.Minute)
+		waitTime := time.Until(nextMinute)
+		if waitTime > 0 {
+			utils.LogCron("WARNING", "[RateLimit-Users] IP %s hit 18 calls to users API in minute window, sleeping %v to reset", ip, waitTime)
+			time.Sleep(waitTime)
+		}
+	}
+}
+
 // GetRemainingHits returns how many API hits are still available in the current 1-minute window.
 func GetRemainingHits() int {
 	ctx := cache.Ctx

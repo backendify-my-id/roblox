@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/apany/roblox-friend-tracker/database"
@@ -11,28 +12,35 @@ import (
 )
 
 func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
+	if _, err := SyncUserFriendsList(userID, robloxUserID); err != nil {
+		return err
+	}
+	if _, err := SyncUserFriendAvatars(userID, robloxUserID); err != nil {
+		return err
+	}
+	if checkNames {
+		if _, err := SyncUserFriendProfiles(userID, robloxUserID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func SyncUserFriendsList(userID uint, robloxUserID string) (int, error) {
 	rID, err := strconv.ParseUint(robloxUserID, 10, 64)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	robloxFriends, err := GetFriends(rID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	rfMap := make(map[string]FriendData)
-	var friendRobloxIDs []uint64
-	
-	// Add self to batch retrieval to keep the registered user's profile updated in the system
-	friendRobloxIDs = append(friendRobloxIDs, rID)
-
 	for _, rf := range robloxFriends {
 		rfMap[fmt.Sprintf("%d", rf.Id)] = rf
-		friendRobloxIDs = append(friendRobloxIDs, rf.Id)
 	}
-
-	avatars, _ := GetAvatars(friendRobloxIDs)
 
 	var existingFriends []models.Friend
 	database.DB.Preload("TargetUser").Where("user_id = ?", userID).Find(&existingFriends)
@@ -44,113 +52,28 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 		}
 	}
 
-	names := make(map[uint64]UserDetailData)
-	if len(friendRobloxIDs) > 0 {
-		fetchedNames, err := GetUserDetails(friendRobloxIDs)
-		if err == nil {
-			names = fetchedNames
-		}
-	}
-
-	// Sync self profile details to ensure the user's own profile changes (avatar, name) are tracked and logged
-	var selfUser models.User
-	if err := database.DB.First(&selfUser, userID).Error; err == nil {
-		selfName := selfUser.RobloxUsername
-		selfDisplayName := selfUser.RobloxDisplayName
-		if n, ok := names[rID]; ok {
-			if n.Name != "" {
-				selfName = n.Name
-			}
-			if n.DisplayName != "" {
-				selfDisplayName = n.DisplayName
-			}
-		}
-		selfAvatar := avatars[rID]
-
-		changed := false
-		if selfName != "" && selfUser.RobloxUsername != selfName {
-			logChange(selfUser.ID, userID, selfUser.RobloxUsername, "username", selfUser.RobloxUsername, selfName, selfUser.IsStealth)
-			selfUser.RobloxUsername = selfName
-			changed = true
-		}
-		if selfDisplayName != "" && selfUser.RobloxDisplayName != selfDisplayName {
-			logChange(selfUser.ID, userID, selfUser.RobloxUsername, "display_name", selfUser.RobloxDisplayName, selfDisplayName, selfUser.IsStealth)
-			selfUser.RobloxDisplayName = selfDisplayName
-			changed = true
-		}
-		if selfAvatar != "" && selfUser.AvatarURL != selfAvatar {
-			logChange(selfUser.ID, userID, selfUser.RobloxUsername, "avatar", selfUser.AvatarURL, selfAvatar, selfUser.IsStealth)
-			selfUser.AvatarURL = selfAvatar
-			changed = true
-		}
-		if changed {
-			database.DB.Save(&selfUser)
-			Hub.Broadcast(WSMessage{
-				Type:   "profile_update",
-				UserID: selfUser.ID,
-				Payload: map[string]interface{}{
-					"roblox_username":     selfUser.RobloxUsername,
-					"roblox_display_name": selfUser.RobloxDisplayName,
-					"avatar_url":          selfUser.AvatarURL,
-				},
-			})
-		}
-	}
+	changeCount := 0
 
 	for _, rf := range robloxFriends {
 		fIDStr := fmt.Sprintf("%d", rf.Id)
-		
-		rfName := rf.Name
-		rfDisplayName := rf.DisplayName
-		if n, ok := names[rf.Id]; ok {
-			if n.Name != "" {
-				rfName = n.Name
-			}
-			if n.DisplayName != "" {
-				rfDisplayName = n.DisplayName
-			}
-		}
-
 
 		var targetUser models.User
 		if err := database.DB.Where("roblox_user_id = ?", fIDStr).First(&targetUser).Error; err != nil {
+			username := rf.Name
+			displayName := rf.DisplayName
+			if username == "" {
+				username = "RobloxUser_" + fIDStr
+			}
+			if displayName == "" {
+				displayName = "RobloxUser_" + fIDStr
+			}
 			targetUser = models.User{
 				RobloxUserID:      fIDStr,
-				RobloxUsername:    rfName,
-				RobloxDisplayName: rfDisplayName,
-				AvatarURL:         avatars[rf.Id],
+				RobloxUsername:    username,
+				RobloxDisplayName: displayName,
 				CurrentPresence:   "Offline",
 			}
 			database.DB.Create(&targetUser)
-		} else {
-			changed := false
-			if rfName != "" && targetUser.RobloxUsername != rfName {
-				logChange(targetUser.ID, userID, targetUser.RobloxUsername, "username", targetUser.RobloxUsername, rfName, targetUser.IsStealth)
-				targetUser.RobloxUsername = rfName
-				changed = true
-			}
-			if rfDisplayName != "" && targetUser.RobloxDisplayName != rfDisplayName {
-				logChange(targetUser.ID, userID, targetUser.RobloxUsername, "display_name", targetUser.RobloxDisplayName, rfDisplayName, targetUser.IsStealth)
-				targetUser.RobloxDisplayName = rfDisplayName
-				changed = true
-			}
-			if avatars[rf.Id] != "" && targetUser.AvatarURL != avatars[rf.Id] {
-				logChange(targetUser.ID, userID, targetUser.RobloxUsername, "avatar", targetUser.AvatarURL, avatars[rf.Id], targetUser.IsStealth)
-				targetUser.AvatarURL = avatars[rf.Id]
-				changed = true
-			}
-			if changed {
-				database.DB.Save(&targetUser)
-				Hub.Broadcast(WSMessage{
-					Type:   "profile_update",
-					UserID: targetUser.ID,
-					Payload: map[string]interface{}{
-						"roblox_username":     targetUser.RobloxUsername,
-						"roblox_display_name": targetUser.RobloxDisplayName,
-						"avatar_url":          targetUser.AvatarURL,
-					},
-				})
-			}
 		}
 
 		if ef, exists := efMap[fIDStr]; exists {
@@ -167,6 +90,7 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 					Type:   "presence_update",
 					UserID: targetUser.ID,
 				})
+				changeCount++
 			}
 		} else {
 			newFriend := models.Friend{
@@ -186,12 +110,13 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 				Type:   "presence_update",
 				UserID: targetUser.ID,
 			})
+			changeCount++
 		}
 	}
 
 	for _, ef := range existingFriends {
 		if ef.TargetUser.ID == 0 {
-			continue // Skip invalid relations
+			continue
 		}
 		if _, exists := rfMap[ef.TargetUser.RobloxUserID]; !exists {
 			if ef.Status != "removed" {
@@ -208,11 +133,209 @@ func SyncUserFriends(userID uint, robloxUserID string, checkNames bool) error {
 					Type:   "presence_update",
 					UserID: ef.TargetUser.ID,
 				})
+				changeCount++
 			}
 		}
 	}
 
-	return nil
+	return changeCount, nil
+}
+
+func SyncUserFriendAvatars(userID uint, robloxUserID string) (int, error) {
+	rID, err := strconv.ParseUint(robloxUserID, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	var friends []models.Friend
+	database.DB.Preload("TargetUser").Where("user_id = ? AND status = ?", userID, "active").Find(&friends)
+
+	var ids []uint64
+	ids = append(ids, rID)
+	for _, f := range friends {
+		if f.TargetUser.ID != 0 {
+			fID, parseErr := strconv.ParseUint(f.TargetUser.RobloxUserID, 10, 64)
+			if parseErr == nil {
+				ids = append(ids, fID)
+			}
+		}
+	}
+
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	avatars, err := GetAvatars(ids)
+	if err != nil {
+		return 0, err
+	}
+
+	changeCount := 0
+
+	var selfUser models.User
+	if err := database.DB.First(&selfUser, userID).Error; err == nil {
+		selfAvatar := avatars[rID]
+		if selfAvatar != "" && selfUser.AvatarURL != selfAvatar {
+			logChange(selfUser.ID, userID, selfUser.RobloxUsername, "avatar", selfUser.AvatarURL, selfAvatar, selfUser.IsStealth)
+			selfUser.AvatarURL = selfAvatar
+			database.DB.Save(&selfUser)
+			Hub.Broadcast(WSMessage{
+				Type:   "profile_update",
+				UserID: selfUser.ID,
+				Payload: map[string]interface{}{
+					"avatar_url": selfUser.AvatarURL,
+				},
+			})
+			changeCount++
+		}
+	}
+
+	for _, f := range friends {
+		fID, parseErr := strconv.ParseUint(f.TargetUser.RobloxUserID, 10, 64)
+		if parseErr != nil {
+			continue
+		}
+		newAvatar := avatars[fID]
+		if newAvatar != "" && f.TargetUser.AvatarURL != newAvatar {
+			logChange(f.TargetUser.ID, userID, f.TargetUser.RobloxUsername, "avatar", f.TargetUser.AvatarURL, newAvatar, f.TargetUser.IsStealth)
+			f.TargetUser.AvatarURL = newAvatar
+			database.DB.Save(&f.TargetUser)
+			Hub.Broadcast(WSMessage{
+				Type:   "profile_update",
+				UserID: f.TargetUser.ID,
+				Payload: map[string]interface{}{
+					"avatar_url": f.TargetUser.AvatarURL,
+				},
+			})
+			changeCount++
+		}
+	}
+
+	return changeCount, nil
+}
+
+func SyncUserFriendProfiles(userID uint, robloxUserID string) (int, error) {
+	rID, err := strconv.ParseUint(robloxUserID, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	var selfUser models.User
+	if err := database.DB.First(&selfUser, userID).Error; err != nil {
+		return 0, err
+	}
+
+	var friends []models.Friend
+	database.DB.Preload("TargetUser").Where("user_id = ? AND status = ?", userID, "active").Find(&friends)
+
+	var ids []uint64
+	if time.Since(selfUser.UpdatedAt) >= 1*time.Hour || selfUser.RobloxUsername == "" {
+		ids = append(ids, rID)
+	}
+
+	for _, f := range friends {
+		if f.TargetUser.ID != 0 {
+			fID, parseErr := strconv.ParseUint(f.TargetUser.RobloxUserID, 10, 64)
+			if parseErr == nil {
+				needName := false
+				if time.Since(f.TargetUser.UpdatedAt) >= 1*time.Hour {
+					needName = true
+				}
+				if f.TargetUser.RobloxUsername == "" || strings.HasPrefix(f.TargetUser.RobloxUsername, "RobloxUser_") {
+					needName = true
+				}
+
+				if needName {
+					ids = append(ids, fID)
+				}
+			}
+		}
+	}
+
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	names, syncErr := GetUserDetails(ids)
+	if syncErr != nil && len(names) == 0 {
+		return 0, syncErr
+	}
+
+	changeCount := 0
+
+	if n, ok := names[rID]; ok {
+		selfName := n.Name
+		selfDisplayName := n.DisplayName
+		changed := false
+		if selfName != "" && selfUser.RobloxUsername != selfName {
+			logChange(selfUser.ID, userID, selfUser.RobloxUsername, "username", selfUser.RobloxUsername, selfName, selfUser.IsStealth)
+			selfUser.RobloxUsername = selfName
+			changed = true
+		}
+		if selfDisplayName != "" && selfUser.RobloxDisplayName != selfDisplayName {
+			logChange(selfUser.ID, userID, selfUser.RobloxUsername, "display_name", selfUser.RobloxDisplayName, selfDisplayName, selfUser.IsStealth)
+			selfUser.RobloxDisplayName = selfDisplayName
+			changed = true
+		}
+		if changed {
+			database.DB.Save(&selfUser)
+			Hub.Broadcast(WSMessage{
+				Type:   "profile_update",
+				UserID: selfUser.ID,
+				Payload: map[string]interface{}{
+					"roblox_username":     selfUser.RobloxUsername,
+					"roblox_display_name": selfUser.RobloxDisplayName,
+				},
+			})
+			changeCount++
+		} else {
+			// Touch UpdatedAt so we don't query it again for the next 1 hour
+			database.DB.Model(&selfUser).Update("updated_at", time.Now())
+		}
+	}
+
+	for _, f := range friends {
+		fID, parseErr := strconv.ParseUint(f.TargetUser.RobloxUserID, 10, 64)
+		if parseErr != nil {
+			continue
+		}
+		if n, ok := names[fID]; ok {
+			rfName := n.Name
+			rfDisplayName := n.DisplayName
+			changed := false
+			if rfName != "" && f.TargetUser.RobloxUsername != rfName {
+				if !strings.HasPrefix(f.TargetUser.RobloxUsername, "RobloxUser_") {
+					logChange(f.TargetUser.ID, userID, f.TargetUser.RobloxUsername, "username", f.TargetUser.RobloxUsername, rfName, f.TargetUser.IsStealth)
+				}
+				f.TargetUser.RobloxUsername = rfName
+				changed = true
+			}
+			if rfDisplayName != "" && f.TargetUser.RobloxDisplayName != rfDisplayName {
+				if !strings.HasPrefix(f.TargetUser.RobloxDisplayName, "RobloxUser_") {
+					logChange(f.TargetUser.ID, userID, f.TargetUser.RobloxUsername, "display_name", f.TargetUser.RobloxDisplayName, rfDisplayName, f.TargetUser.IsStealth)
+				}
+				f.TargetUser.RobloxDisplayName = rfDisplayName
+				changed = true
+			}
+			if changed {
+				database.DB.Save(&f.TargetUser)
+				Hub.Broadcast(WSMessage{
+					Type:   "profile_update",
+					UserID: f.TargetUser.ID,
+					Payload: map[string]interface{}{
+						"roblox_username":     f.TargetUser.RobloxUsername,
+						"roblox_display_name": f.TargetUser.RobloxDisplayName,
+					},
+				})
+				changeCount++
+			} else {
+				// Touch UpdatedAt so we don't query it again for the next 1 hour
+				database.DB.Model(&f.TargetUser).Update("updated_at", time.Now())
+			}
+		}
+	}
+
+	return changeCount, syncErr
 }
 
 func logChange(targetUserID uint, ownerID uint, username, changeType, oldVal, newVal string, isStealth bool) {

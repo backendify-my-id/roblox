@@ -131,17 +131,28 @@ func GetUserDetails(userIds []uint64) (map[uint64]UserDetailData, error) {
 		backoff := 2 * time.Second
 
 		for attempt := 0; attempt < maxRetries; attempt++ {
-			// Enforce at least 3 seconds delay between POST /v1/users calls to prevent Roblox API 429 rate limit
+			// Enforce at least 5 seconds delay between POST /v1/users calls to prevent Roblox API 429 rate limit
 			userDetailsMu.Lock()
 			elapsed := time.Since(lastUserDetailsReq)
-			if elapsed < 3*time.Second {
-				time.Sleep(3*time.Second - elapsed)
+			if elapsed < 5*time.Second {
+				time.Sleep(5*time.Second - elapsed)
 			}
 			lastUserDetailsReq = time.Now()
 			userDetailsMu.Unlock()
 
 			waitForRateLimit()
-			resp, reqErr = http.Post("https://users.roblox.com/v1/users", "application/json", bytes.NewBuffer(body))
+			WaitForUsersRateLimit()
+
+			var req *http.Request
+			req, reqErr = http.NewRequest("POST", "https://users.roblox.com/v1/users", bytes.NewBuffer(body))
+			if reqErr == nil {
+				req.Header.Set("Content-Type", "application/json")
+				cookie := GetGlobalCookie()
+				if cookie != "" {
+					req.Header.Set("Cookie", ".ROBLOSECURITY="+utils.ExtractRoblosecurity(cookie))
+				}
+				resp, reqErr = http.DefaultClient.Do(req)
+			}
 			if reqErr != nil {
 				if attempt == maxRetries-1 {
 					break
@@ -153,10 +164,8 @@ func GetUserDetails(userIds []uint64) (map[uint64]UserDetailData, error) {
 
 			if resp.StatusCode == 429 {
 				resp.Body.Close()
-				utils.LogCron("WARNING", "[GetUserDetails] API returned 429. Sleeping %v before retry %d/%d...", backoff, attempt+1, maxRetries)
-				time.Sleep(backoff)
-				backoff *= 2
-				continue
+				utils.LogCron("WARNING", "[GetUserDetails] API returned 429. Aborting batch immediately to allow IP cooldown.")
+				return result, fmt.Errorf("Roblox API rate limit exceeded (429)")
 			}
 
 			break
